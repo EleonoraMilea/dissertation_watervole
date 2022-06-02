@@ -1,0 +1,744 @@
+---
+title: "American mink analysis"
+output: html_notebook
+author: "Eleonora Milea"
+date: '2022-05-02'
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+# Loading libriaries
+library(dplyr)
+library(sp)
+library(mapview)
+library(rgdal)
+library(raster)
+library(ncdf4)
+library(sf)
+library(rgeos)
+library(runjags)
+```
+
+------------------------------------------------------------------------
+
+### **Subsetting data**
+
+```{r}
+# Importing mink data
+mink_sp <- readOGR("layers_27700/mink.shp",
+                   GDAL1_integer64_policy = T)
+str(mink_sp@data)
+head(mink_sp@data)
+mink_sp@bbox
+mink_sp@proj4string
+length(mink_sp@data$Occurrence)
+
+
+# Removing duplicates
+mink_sp <- remove.duplicates(mink_sp)
+length(mink_sp@data$Occurrence)
+
+
+# Taking out NAs from year 
+mink_sp <- subset(mink_sp, Year != "NA")
+range(mink_sp@data$Year)
+length(mink_sp@data$Occurrence)
+
+
+# Considering only data from 1999
+mink_sp <- subset(mink_sp, Year > "1999")
+range(mink_sp@data$Year)
+length(mink_sp@data$Occurrence)
+
+
+# Keeping only landcover that we need
+mink_sp@data <- mink_sp@data[, c("Occurrence", "Year")]
+names(mink_sp@data)
+length(mink_sp@data$Year)
+
+
+# Recoding present/absent into 1/0
+mink_sp@data$Occurrence[mink_sp@data$Occurrence == "absent"] <- 0
+mink_sp@data$Occurrence[mink_sp@data$Occurrence == "present"] <- 1
+mink_sp@data$Occurrence <- as.integer(mink_sp@data$Occurrence)
+str(mink_sp@data$Occurrence)
+length(mink_sp@data$Occurrence[mink_sp@data$Occurrence == 0])
+length(mink_sp@data$Occurrence[mink_sp@data$Occurrence == 1])
+
+
+# Subsetting only presence data (since the absence record is only 1, we will exclude this)
+mink_sp <- subset(mink_sp, Occurrence == "1")
+length(mink_sp@data$Occurrence)
+
+
+# Plotting data
+mapview(mink_sp, axes = T,
+        xlab = "Longitude",
+        ylab = "Latitude")
+```
+
+
+### **Creating the pseudo-absence points**
+
+Now we generate random points to create pseudo-absences records 
+
+```{r}
+# Importing boundary
+boundary <- readOGR("layers_27700/boundary_nohebrids.shp",
+                    GDAL1_integer64_policy = T)
+plot(boundary)
+
+# Creating random records in the boundary area
+mink_absence <- spsample(boundary, length(mink_sp), type = "random")
+mapview(mink_absence)
+length(mink_absence)
+
+
+# Transforming df into sp object
+mink_absence <- SpatialPointsDataFrame(coords = mink_absence@coords,
+                                       data = data.frame(Occurrence =
+                                       rep(0, length(mink_absence)),
+                                       Year = mink_sp$Year),
+                                       proj4string = mink_sp@proj4string)
+
+# Binding presence and absence sp objects
+mink <- rbind(mink_sp, mink_absence)
+
+
+# Creating id column 
+mink$id <- seq(1, nrow(mink))
+unique(mink@data$Occurrence)
+
+
+# Plotting
+mapview(mink, zcol = "Occurrence")
+```
+
+------------------------------------------------------------------------
+
+### **Layers: Land cover** 
+
+
+```{r}
+# Importing land cover
+land_00 <- raster("layers_27700/landcover_2000.tif")
+land_07 <- raster("layers_27700/landcover_2007.tif")
+land_15 <- raster("layers_27700/landcover_2015.tif")
+land_17 <- raster("layers_27700/landcover_2017.tif")
+land_18 <- raster("layers_27700/landcover_2018.tif") 
+land_19 <- raster("layers_27700/landcover_2019.tif")
+land_20 <- raster("layers_27700/landcover_2020.tif")
+```
+
+Now we will create buffers of 50 m to calculate the proportion of each land 
+cover type at each buffer point. Let's first subset the observation points by time period,  and then create for each period a buffer. Since we only have discontinuous 
+land cover across years, we will assume that land cover has not changed between
+intervals.
+
+
+```{r}
+# Subsetting by time period
+mink_00 <- subset(mink, Year >= 2000 & Year <= 2004)
+mink_07 <- subset(mink, Year >= 2005 & Year <= 2012)
+mink_15 <- subset(mink, Year >= 2013 & Year <= 2016)
+mink_17 <- subset(mink, Year == 2017)
+mink_18 <- subset(mink, Year == 2018)
+mink_19 <- subset(mink, Year == 2019)
+mink_20 <- subset(mink, Year >= 2020) # 2020-2022
+
+
+# Creating buffer for each time period
+# 2000 - 2004
+minkbuffer_0050 <- gBuffer(mink_00, width = 100, byid = T)
+
+# 2005 - 2012
+minkbuffer_0750 <- gBuffer(mink_07, width = 100, byid = T)
+
+# 2013 - 2016
+minkbuffer_1550 <- gBuffer(mink_15, width = 100, byid = T)
+
+# 2017
+minkbuffer_1750 <- gBuffer(mink_17, width = 100, byid = T)
+
+# 2018
+minkbuffer_1850 <- gBuffer(mink_18, width = 100, byid = T)
+
+# 2019
+minkbuffer_1950 <- gBuffer(mink_19, width = 100, byid = T)
+
+# 2020 - 2022
+minkbuffer_2050 <- gBuffer(mink_20, width = 100, byid = T)
+
+
+# Tabulate raster for each time period using the buffer df
+
+# 2000 - 2004
+landcover_0050 <- data.frame(matrix(NA, nrow = length(minkbuffer_0050),
+                                    ncol = 26))
+head(landcover_0050)
+names(landcover_0050) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21", "22", "23", "24", "25", "26")
+
+# 2005 - 2012
+landcover_0750 <- data.frame(matrix(NA, nrow = length(minkbuffer_0750),
+                                    ncol = 24))
+names(landcover_0750) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21", "22", "23", "24")
+
+# 2013 - 2016
+landcover_1550 <- data.frame(matrix(NA, nrow = length(minkbuffer_1550),
+                                    ncol = 22))
+names(landcover_1550) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21", "22")
+
+# 2017
+landcover_1750 <- data.frame(matrix(NA, nrow = length(minkbuffer_1750),
+                                    ncol = 21))
+names(landcover_1750) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21")
+
+# 2018
+landcover_1850 <- data.frame(matrix(NA, nrow = length(minkbuffer_1850),
+                                    ncol = 21))
+names(landcover_1850) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21")
+
+# 2019
+landcover_1950 <- data.frame(matrix(NA, nrow = length(minkbuffer_1950),
+                                    ncol = 21))
+names(landcover_1950) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21")
+
+# 2020 - 2022
+landcover_2050 <- data.frame(matrix(NA, nrow = length(minkbuffer_2050),
+                                    ncol = 21))
+names(landcover_2050) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13", "14", "15", "16", "17", "18",
+                            "19", "20", "21")
+
+
+# Intersecting each buffer with the land cover
+
+# 2000 - 2004
+int.list00 <- list()
+for (i in 1:length(minkbuffer_0050)){
+  int.list00[[i]] <- raster::intersect(land_00, minkbuffer_0050[i,])
+}
+
+# 2005 - 2012
+int.list07 <- list()
+for (i in 1: length(minkbuffer_0750)){
+  int.list07[[i]] <- raster::intersect(land_07,  minkbuffer_0750[i,])
+}
+
+# 2013 - 2016
+int.list15 <- list()
+for (i in 1:length(minkbuffer_1550)){
+  int.list15[[i]] <- raster::intersect(land_15, minkbuffer_1550[i,])
+}
+
+# 2017
+int.list17 <- list()
+for (i in 1:length(minkbuffer_1750)){
+  int.list17[[i]] <- raster::intersect(land_17, minkbuffer_1750[i,])
+}
+
+# 2018
+int.list18 <- list()
+for (i in 1:length(minkbuffer_1850)){
+  int.list18[[i]] <- raster::intersect(land_18, minkbuffer_1850[i,])
+}
+
+# 2019
+int.list19 <- list()
+for ( i in 1:length(minkbuffer_1950)){
+  int.list19[[i]] <- raster::intersect(land_19, minkbuffer_1950[i,])
+}
+
+# 2020 - 2022
+int.list20 <- list()
+for (i in 1:length(minkbuffer_2050)){
+  int.list20[[i]] <- raster::intersect(land_20, minkbuffer_2050[i,])
+}
+
+
+# Counting pixel
+
+# 2000 - 2004
+for (i in 1:length(minkbuffer_0050)){
+  for (j in 1:length(names(landcover_0050))) {
+    landcover_0050[i,j] <- table(values(int.list00[[i]]))[as.character(names(landcover_0050)[j])]
+  }}
+head(landcover_0050)
+int.list00[[1]]
+land_00@data
+
+# 2005 - 2012
+for (i in 1:length(minkbuffer_0750)){
+  for ( j in 1:length(names(landcover_0750))) {
+    landcover_0750[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_0750)[j])]
+  }}
+
+# 2013 - 2016
+for (i in 1:length(minkbuffer_1550)){
+  for ( j in 1:length(names(landcover_1550))) {
+    landcover_1550[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_1550)[j])]
+  }}
+
+# 2017
+for (i in 1:length(minkbuffer_1750)){
+  for ( j in 1:length(names(landcover_1750))) {
+    landcover_1750[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_1750)[j])]
+  }}
+
+# 2018
+for (i in 1:length(minkbuffer_1850)){
+  for ( j in 1:length(names(landcover_1850))) {
+    landcover_1850[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_1850)[j])]
+  }}
+
+# 2019
+for (i in 1:length(minkbuffer_1950)){
+  for ( j in 1:length(names(landcover_1950))) {
+    landcover_1950[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_1950)[j])]
+  }}
+
+# 2017
+for (i in 1:length(minkbuffer_2050)){
+  for ( j in 1:length(names(landcover_2050))) {
+    landcover_2050[i,j] <- table(
+      values(int.list[[i]]))[as.character(names(landcover_2050)[j])]
+  }}
+
+
+# Changing categories name
+names(landcover_0050) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "boundaries_linearfeatures",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "bracken",
+                            "dwarf_shrubheath",
+                            "fen_marsh_swamp",
+                            "bog",
+                            "standingwater_canals",
+                            "rivers",
+                            "montane_habitats",
+                            "inland_rock",
+                            "builtup_areas",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "inshore_sublittoralsediment",
+                            "inshore_sublittoralrock",
+                            "offshore_shelfsediment",
+                            "offshore_shelfrock",
+                            "continential_shelfslope")
+
+names(landcover_0750) <- c ("unclassified",
+                            "broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "rough_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "montane_habitats",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+names(landcover_1550) <- c ("unclassified",
+                            "broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+names(landcover_1750) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+names(landcover_1850) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+names(landcover_1950) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+names(landcover_2050) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "fen_marsh_swamp",
+                            "heather",
+                            "heather_grassland",
+                            "bog",
+                            "inland_rock",
+                            "saltwater",
+                            "freshwater",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "saltmarsh",
+                            "urban",
+                            "suburban")
+
+
+# Replacing NAs with 0
+landcover_0050[is.na(landcover_0050)] <- 0
+head(landcover_0050)
+
+landcover_0750[is.na(landcover_0750)] <- 0
+landcover_1550[is.na(landcover_1550)] <- 0
+landcover_1750[is.na(landcover_1750)] <- 0
+landcover_1850[is.na(landcover_1850)] <- 0
+landcover_1950[is.na(landcover_1950)] <- 0
+landcover_2050[is.na(landcover_2050)] <- 0
+
+
+# Calculating proportion of each land cover type at buffer
+
+# 2000 - 2004
+landcover_0050$tot_pixel <- rowSums(landcover_0050)
+head(landcover_0050)
+tail(landcover_0050)
+summary(landcover_0050)
+names(landcover_0050)
+mink_00@data
+mink_00$broadleaved_woodland <- landcover_0050$broadleaved_woodland/landcover_0050$tot_pixel
+mink_00$coniferous_woodland <- landcover_0050$coniferous_woodland/landcover_0050$tot_pixel
+mink_00$boundaries_linearfeatures <- landcover_0050$boundaries_linearfeatures/landcover_0050$tot_pixel
+mink_00$arable_horticulture <- landcover_0050$arable_horticulture/landcover_0050$tot_pixel
+mink_00$improved_grassland <- landcover_0050$improved_grassland/landcover_0050$tot_pixel
+mink_00$neutral_grassland <- landcover_0050$neutral_grassland/landcover_0050$tot_pixel
+mink_00$calcareous_grassland <- landcover_0050$calcareous_grassland/landcover_0050$tot_pixel
+mink_00$acid_grassland <- landcover_0050$acid_grassland/landcover_0050$tot_pixel
+mink_00$bracken <- landcover_0050$bracken/landcover_0050$tot_pixel
+mink_00$dwarf_shrubheath <- landcover_0050$dwarf_shrubheath/landcover_0050$tot_pixel
+mink_00$fen_marsh_swamp <- landcover_0050$fen_marsh_swamp/landcover_0050$tot_pixel
+mink_00$bog <- landcover_0050$bog/landcover_0050$tot_pixel
+mink_00$standingwater_canals <- landcover_0050$standingwater_canals/landcover_0050$tot_pixel
+mink_00$rivers <- landcover_0050$rivers/landcover_0050$tot_pixel
+mink_00$montane_habitats <- landcover_0050$montane_habitats/landcover_0050$tot_pixel
+mink_00$inland_rock <- landcover_0050$inland_rock/landcover_0050$tot_pixel
+mink_00$builtup_areas <- landcover_0050$builtup_areas/landcover_0050$tot_pixel
+mink_00$supralittoral_rock <- landcover_0050$supralittoral_rock/landcover_0050$tot_pixel
+mink_00$supralittoral_sediment <- landcover_0050$supralittoral_sediment/landcover_0050$tot_pixel
+mink_00$littoral_rock <- landcover_0050$littoral_rock/landcover_0050$tot_pixel
+mink_00$littoral_sediment <- landcover_0050$littoral_sediment/landcover_0050$tot_pixel
+mink_00$inshore_sublittoralsediment <- landcover_0050$inshore_sublittoralsediment/landcover_0050$tot_pixel
+mink_00$inshore_sublittoralrock <- landcover_0050$inshore_sublittoralrock/landcover_0050$tot_pixel
+mink_00$offshore_shelfsediment <- landcover_0050$offshore_shelfsediment/landcover_0050$tot_pixel
+mink_00$offshore_shelfrock <- landcover_0050$offshore_shelfrock/landcover_0050$tot_pixel
+mink_00$continental_shelfslope <- landcover_0050$continental_shelfslope/landcover_0050$tot_pixel
+
+
+# 2005 - 2012
+landcover_0750$tot_pixel <- rowSums(landcover_0750)
+mink_07$unclassified <- landcover_0750$unclassified/landcover_0750$tot_pixel
+mink_07$broadleaved_woodland <- landcover_0750$broadleaved_woodland/landcover_0750$tot_pixel
+mink_07$coniferous_woodland <- landcover_0750$coniferous_woodland/landcover_0750$tot_pixel
+mink_07$arable_horticulture <- landcover_0750$arable_horticulture/landcover_0750$tot_pixel
+mink_07$improved_grassland <- landcover_0750$improved_grassland/landcover_0750$tot_pixel
+mink_07$rough_grassland <- landcover_0750$rough_grassland/landcover_0750$tot_pixel
+mink_07$neutral_grassland <- landcover_0750$neutral_grassland/landcover_0750$tot_pixel
+mink_07$calcareous_grassland <- landcover_0750$calcareous_grassland/landcover_0750$tot_pixel
+mink_07$acid_grassland <- landcover_0750$acid_grassland/landcover_0750$tot_pixel
+mink_07$fen_marsh_swamp <- landcover_0750$fen_marsh_swamp/landcover_0750$tot_pixel
+mink_07$heather <- landcover_0750$heather/landcover_0750$tot_pixel
+mink_07$heather_grassland <- landcover_0750$heather_grassland/landcover_0750$tot_pixel
+mink_07$bog <- landcover_0750$bog/landcover_0750$tot_pixel
+mink_07$montane_habitats <- landcover_0750$montane_habitats/landcover_0750$tot_pixel
+mink_07$inland_rock <- landcover_0750$inland_rock/landcover_0750$tot_pixel
+mink_07$saltwater <- landcover_0750$saltwater/landcover_0750$tot_pixel
+mink_07$freshwater <- landcover_0750$freshwater/landcover_0750$tot_pixel
+mink_07$supralittoral_rock <- landcover_0750$supralittoral_rock/landcover_0750$tot_pixel
+mink_07$supralittoral_sediment <- landcover_0750$supralittoral_sediment/landcover_0750$tot_pixel
+mink_07$littoral_rock <- landcover_0750$littoral_rock/landcover_0750$tot_pixel
+mink_07$littoral_sediment <- landcover_0750$littoral_sediment/landcover_0750$tot_pixel
+mink_07$saltmarsh <- landcover_0750$saltmarsh/landcover_0750$tot_pixel
+mink_07$urban <- landcover_0750$urban/landcover_0750$tot_pixel
+mink_07$suburban <- landcover_0750$suburban/landcover_0750$tot_pixel
+
+
+# 2003 - 2016
+landcover_1550$tot_pixel <- rowSums(landcover_1550)
+mink_15$unclassified <- landcover_1550$unclassified/landcover_1550$tot_pixel
+mink_15$broadleaved_woodland <- landcover_1550$broadleaved_woodland/landcover_1550$tot_pixel
+mink_15$coniferous_woodland <- landcover_1550$coniferous_woodland/landcover_1550$tot_pixel
+mink_15$arable_horticulture <- landcover_1550$arable_horticulture/landcover_1550$tot_pixel
+mink_15$improved_grassland <- landcover_1550$improved_grassland/landcover_1550$tot_pixel
+mink_15$neutral_grassland <- landcover_1550$neutral_grassland/landcover_1550$tot_pixel
+mink_15$calcareous_grassland <- landcover_1550$calcareous_grassland/landcover_1550$tot_pixel
+mink_15$acid_grassland <- landcover_1550$acid_grassland/landcover_1550$tot_pixel
+mink_15$fen_marsh_swamp <- landcover_1550$fen_marsh_swamp/landcover_1550$tot_pixel
+mink_15$heather <- landcover_1550$heather/landcover_1550$tot_pixel
+mink_15$heather_grassland <- landcover_1550$heather_grassland/landcover_1550$tot_pixel
+mink_15$bog <- landcover_1550$bog/landcover_1550$tot_pixel
+mink_15$inland_rock <- landcover_1550$inland_rock/landcover_1550$tot_pixel
+mink_15$saltwater <- landcover_1550$saltwater/landcover_1550$tot_pixel
+mink_15$freshwater <- landcover_1550$freshwater/landcover_1550$tot_pixel
+mink_15$supralittoral_rock <- landcover_1550$supralittoral_rock/landcover_1550$tot_pixel
+mink_15$supralittoral_sediment <- landcover_1550$supralittoral_sediment/landcover_1550$tot_pixel
+mink_15$littoral_rock <- landcover_1550$littoral_rock/landcover_1550$tot_pixel
+mink_15$littoral_sediment <- landcover_1550$littoral_sediment/landcover_1550$tot_pixel
+mink_15$saltmarsh <- landcover_1550$saltmarsh/landcover_1550$tot_pixel
+mink_15$urban <- landcover_1550$urban/landcover_1550$tot_pixel
+mink_15$suburban <- landcover_1550$suburban/landcover_1550$tot_pixel
+
+
+# 2017
+landcover_1750$tot_pixel <- rowSums(landcover_1750)
+mink_17$broadleaved_woodland <- landcover_1750$broadleaved_woodland/landcover_1750$tot_pixel
+mink_17$coniferous_woodland <- landcover_1750$coniferous_woodland/landcover_1750$tot_pixel
+mink_17$arable_horticulture <- landcover_1750$arable_horticulture/landcover_1750$tot_pixel
+mink_17$improved_grassland <- landcover_1750$improved_grassland/landcover_1750$tot_pixel
+mink_17$neutral_grassland <- landcover_1750$neutral_grassland/landcover_1750$tot_pixel
+mink_17$calcareous_grassland <- landcover_1750$calcareous_grassland/landcover_1750$tot_pixel
+mink_17$acid_grassland <- landcover_1750$acid_grassland/landcover_1750$tot_pixel
+mink_17$fen_marsh_swamp <- landcover_1750$fen_marsh_swamp/landcover_1750$tot_pixel
+mink_17$heather <- landcover_1750$heather/landcover_1750$tot_pixel
+mink_17$heather_grassland <- landcover_1750$heather_grassland/landcover_1750$tot_pixel
+mink_17$bog <- landcover_1750$bog/landcover_1750$tot_pixel
+mink_17$inland_rock <- landcover_1750$inland_rock/landcover_1750$tot_pixel
+mink_17$saltwater <- landcover_1750$saltwater/landcover_1750$tot_pixel
+mink_17$freshwater <- landcover_1750$freshwater/landcover_1750$tot_pixel
+mink_17$supralittoral_rock <- landcover_1750$supralittoral_rock/landcover_1750$tot_pixel
+mink_17$supralittoral_sediment <- landcover_1750$supralittoral_sediment/landcover_1750$tot_pixel
+mink_17$littoral_rock <- landcover_1750$littoral_rock/landcover_1750$tot_pixel
+mink_17$littoral_sediment <- landcover_1750$littoral_sediment/landcover_1750$tot_pixel
+mink_17$saltmarsh <- landcover_1750$saltmarsh/landcover_1750$tot_pixel
+mink_17$urban <- landcover_1750$urban/landcover_1750$tot_pixel
+mink_17$suburban <- landcover_1750$suburban/landcover_1750$tot_pixel
+
+
+# 2018
+landcover_1850$tot_pixel <- rowSums(landcover_1850)
+mink_18$broadleaved_woodland <- landcover_1850$broadleaved_woodland/landcover_1850$tot_pixel
+mink_18$coniferous_woodland <- landcover_1850$coniferous_woodland/landcover_1850$tot_pixel
+mink_18$arable_horticulture <- landcover_1850$arable_horticulture/landcover_1850$tot_pixel
+mink_18$improved_grassland <- landcover_1850$improved_grassland/landcover_1850$tot_pixel
+mink_18$neutral_grassland <- landcover_1850$neutral_grassland/landcover_1850$tot_pixel
+mink_18$calcareous_grassland <- landcover_1850$calcareous_grassland/landcover_1850$tot_pixel
+mink_18$acid_grassland <- landcover_1850$acid_grassland/landcover_1850$tot_pixel
+mink_18$fen_marsh_swamp <- landcover_1850$fen_marsh_swamp/landcover_1850$tot_pixel
+mink_18$heather <- landcover_1850$heather/landcover_1850$tot_pixel
+mink_18$heather_grassland <- landcover_1850$heather_grassland/landcover_1850$tot_pixel
+mink_18$bog <- landcover_1850$bog/landcover_1850$tot_pixel
+mink_18$inland_rock <- landcover_1850$inland_rock/landcover_1850$tot_pixel
+mink_18$saltwater <- landcover_1850$saltwater/landcover_1850$tot_pixel
+mink_18$freshwater <- landcover_1850$freshwater/landcover_1850$tot_pixel
+mink_18$supralittoral_rock <- landcover_1850$supralittoral_rock/landcover_1850$tot_pixel
+mink_18$supralittoral_sediment <- landcover_1850$supralittoral_sediment/landcover_1850$tot_pixel
+mink_18$littoral_rock <- landcover_1850$littoral_rock/landcover_1850$tot_pixel
+mink_18$littoral_sediment <- landcover_1850$littoral_sediment/landcover_1850$tot_pixel
+mink_18$saltmarsh <- landcover_1850$saltmarsh/landcover_1850$tot_pixel
+mink_18$urban <- landcover_1850$urban/landcover_1850$tot_pixel
+mink_18$suburban <- landcover_1850$suburban/landcover_1850$tot_pixel
+
+
+# 2019
+landcover_1950$tot_pixel <- rowSums(landcover_1950)
+mink_19$broadleaved_woodland <- landcover_1950$broadleaved_woodland/landcover_1950$tot_pixel
+mink_19$coniferous_woodland <- landcover_1950$coniferous_woodland/landcover_1950$tot_pixel
+mink_19$arable_horticulture <- landcover_1950$arable_horticulture/landcover_1950$tot_pixel
+mink_19$improved_grassland <- landcover_1950$improved_grassland/landcover_1950$tot_pixel
+mink_19$neutral_grassland <- landcover_1950$neutral_grassland/landcover_1950$tot_pixel
+mink_19$calcareous_grassland <- landcover_1950$calcareous_grassland/landcover_1950$tot_pixel
+mink_19$acid_grassland <- landcover_1950$acid_grassland/landcover_1950$tot_pixel
+mink_19$fen_marsh_swamp <- landcover_1950$fen_marsh_swamp/landcover_1950$tot_pixel
+mink_19$heather <- landcover_1950$heather/landcover_1950$tot_pixel
+mink_19$heather_grassland <- landcover_1950$heather_grassland/landcover_1950$tot_pixel
+mink_19$bog <- landcover_1950$bog/landcover_1950$tot_pixel
+mink_19$inland_rock <- landcover_1950$inland_rock/landcover_1950$tot_pixel
+mink_19$saltwater <- landcover_1950$saltwater/landcover_1950$tot_pixel
+mink_19$freshwater <- landcover_1950$freshwater/landcover_1950$tot_pixel
+mink_19$supralittoral_rock <- landcover_1950$supralittoral_rock/landcover_1950$tot_pixel
+mink_19$supralittoral_sediment <- landcover_1950$supralittoral_sediment/landcover_1950$tot_pixel
+mink_19$littoral_rock <- landcover_1950$littoral_rock/landcover_1950$tot_pixel
+mink_19$littoral_sediment <- landcover_1950$littoral_sediment/landcover_1950$tot_pixel
+mink_19$saltmarsh <- landcover_1950$saltmarsh/landcover_1950$tot_pixel
+mink_19$urban <- landcover_1950$urban/landcover_1950$tot_pixel
+mink_19$suburban <- landcover_1950$suburban/landcover_1950$tot_pixel
+
+
+# 2020 - 2022
+landcover_2050$tot_pixel <- rowSums(landcover_2050)
+mink_20$broadleaved_woodland <- landcover_2050$broadleaved_woodland/landcover_2050$tot_pixel
+mink_20$coniferous_woodland <- landcover_2050$coniferous_woodland/landcover_2050$tot_pixel
+mink_20$arable_horticulture <- landcover_2050$arable_horticulture/landcover_2050$tot_pixel
+mink_20$improved_grassland <- landcover_2050$improved_grassland/landcover_2050$tot_pixel
+mink_20$neutral_grassland <- landcover_2050$neutral_grassland/landcover_2050$tot_pixel
+mink_20$calcareous_grassland <- landcover_2050$calcareous_grassland/landcover_2050$tot_pixel
+mink_20$acid_grassland <- landcover_2050$acid_grassland/landcover_2050$tot_pixel
+mink_20$fen_marsh_swamp <- landcover_2050$fen_marsh_swamp/landcover_2050$tot_pixel
+mink_20$heather <- landcover_2050$heather/landcover_2050$tot_pixel
+mink_20$heather_grassland <- landcover_2050$heather_grassland/landcover_2050$tot_pixel
+mink_20$bog <- landcover_2050$bog/landcover_2050$tot_pixel
+mink_20$inland_rock <- landcover_2050$inland_rock/landcover_2050$tot_pixel
+mink_20$saltwater <- landcover_2050$saltwater/landcover_2050$tot_pixel
+mink_20$freshwater <- landcover_2050$freshwater/landcover_2050$tot_pixel
+mink_20$supralittoral_rock <- landcover_2050$supralittoral_rock/landcover_2050$tot_pixel
+mink_20$supralittoral_sediment <- landcover_2050$supralittoral_sediment/landcover_2050$tot_pixel
+mink_20$littoral_rock <- landcover_2050$littoral_rock/landcover_2050$tot_pixel
+mink_20$littoral_sediment <- landcover_2050$littoral_sediment/landcover_2050$tot_pixel
+mink_20$saltmarsh <- landcover_2050$saltmarsh/landcover_2050$tot_pixel
+mink_20$urban <- landcover_2050$urban/landcover_2050$tot_pixel
+mink_20$suburban <- landcover_2050$suburban/landcover_2050$tot_pixel
+
+
+mapview(mink_00) +
+  mapview(land_00)
+```
+
+Now we can the environment space from objects we do not need anymore. 
+
+```{r}
+# Cleaning space
+rm(minkbuffer_0050)
+rm(minkbuffer_0750)
+rm(minkbuffer_1550)
+rm(minkbuffer_1750)
+rm(minkbuffer_1850)
+rm(minkbuffer_1950)
+rm(minkbuffer_2050)
+rm(landcover_0050)
+rm(landcover_0750)
+rm(landcover_1550)
+rm(landcover_1750)
+rm(landcover_1850)
+rm(landcover_1950)
+rm(landcover_2050)
+rm(int.list)
+gc()
+```
+
+------------------------------------------------------------------------
+
+### **Layers: Waterways**
+
+After importing the waterways shapefile, we will need to calculate the distance
+from each observation point to the nearest waterway.
+
+```{r}
+# Importing waterways
+water <- readOGR("layers_27700/waterways.shp",
+                 GDAL1_integer64_policy = T)
+mapview(water)
+head(water@data)
+unique(water@data$layer)
+
+
+# distance calculation between points and nearest waterway
+dist.water <- gDistance(water, mink, byid = T)
+mink@data$dist.water <- apply(dist.water, MARGIN = 1, fun = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
+head(obs.points@data)
+
+
+```
+
