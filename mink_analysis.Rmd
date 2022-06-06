@@ -1,16 +1,13 @@
 ---
-title: "American mink analysis"
-output: html_notebook
+title: "mink_analysis"
 author: "Eleonora Milea"
-date: '2022-05-02'
-editor_options: 
-  markdown: 
-    wrap: 72
+date: '2022-06-02'
+output: html_document
 ---
 
-```{r}
+```{r warning=FALSE}
 # Loading libriaries
-library(dplyr)
+library(tidyverse)
 library(sp)
 library(mapview)
 library(rgdal)
@@ -23,7 +20,7 @@ library(runjags)
 
 ------------------------------------------------------------------------
 
-### **Subsetting data**
+### **Subsetting mink data**
 
 ```{r}
 # Importing mink data
@@ -63,7 +60,7 @@ length(mink_sp@data$Year)
 mink_sp@data$Occurrence[mink_sp@data$Occurrence == "absent"] <- 0
 mink_sp@data$Occurrence[mink_sp@data$Occurrence == "present"] <- 1
 mink_sp@data$Occurrence <- as.integer(mink_sp@data$Occurrence)
-str(mink_sp@data$Occurrence)
+unique(mink_sp@data$Occurrence)
 length(mink_sp@data$Occurrence[mink_sp@data$Occurrence == 0])
 length(mink_sp@data$Occurrence[mink_sp@data$Occurrence == 1])
 
@@ -109,17 +106,27 @@ mink <- rbind(mink_sp, mink_absence)
 
 # Creating id column 
 mink$id <- seq(1, nrow(mink))
-unique(mink@data$Occurrence)
 
 
 # Plotting
 mapview(mink, zcol = "Occurrence")
 ```
 
+Cleaning the environment
+
+```{r}
+# Cleaning environment
+rm(mink_sp)
+rm(mink_absence)
+gc()
+```
+
+
 ------------------------------------------------------------------------
 
 ### **Layers: Land cover** 
 
+Let's first import the data
 
 ```{r}
 # Importing land cover
@@ -139,193 +146,182 @@ intervals.
 
 
 ```{r}
-# Subsetting by time period
-mink_00 <- subset(mink, Year >= 2000 & Year <= 2004)
-mink_07 <- subset(mink, Year >= 2005 & Year <= 2012)
-mink_15 <- subset(mink, Year >= 2013 & Year <= 2016)
-mink_17 <- subset(mink, Year == 2017)
-mink_18 <- subset(mink, Year == 2018)
-mink_19 <- subset(mink, Year == 2019)
-mink_20 <- subset(mink, Year >= 2020) # 2020-2022
-
-
 # Creating buffer for each time period
 # 2000 - 2004
-minkbuffer_0050 <- gBuffer(mink_00, width = 100, byid = T)
+minkbuffer_00100 <- gBuffer(subset(mink, Year >= 2000 & Year <= 2004), width = 100, byid = T)
+head(minkbuffer_00100@data)
 
 # 2005 - 2012
-minkbuffer_0750 <- gBuffer(mink_07, width = 100, byid = T)
+minkbuffer_07100 <- gBuffer(subset(mink, Year >= 2005 & Year <= 2012), width = 100, byid = T)
 
 # 2013 - 2016
-minkbuffer_1550 <- gBuffer(mink_15, width = 100, byid = T)
+minkbuffer_15100 <- gBuffer(subset(mink, Year >= 2013 & Year <= 2016), width = 100, byid = T)
 
 # 2017
-minkbuffer_1750 <- gBuffer(mink_17, width = 100, byid = T)
+minkbuffer_17100 <- gBuffer(subset(mink, Year == 2017), width = 100, byid = T)
 
 # 2018
-minkbuffer_1850 <- gBuffer(mink_18, width = 100, byid = T)
+minkbuffer_18100 <- gBuffer(subset(mink, Year == 2018), width = 100, byid = T)
 
 # 2019
-minkbuffer_1950 <- gBuffer(mink_19, width = 100, byid = T)
+minkbuffer_19100 <- gBuffer(subset(mink, Year == 2019), width = 100, byid = T)
 
 # 2020 - 2022
-minkbuffer_2050 <- gBuffer(mink_20, width = 100, byid = T)
+minkbuffer_20100 <- gBuffer(subset(mink, Year >= 2020), width = 100, byid = T)
 
 
 # Tabulate raster for each time period using the buffer df
-
 # 2000 - 2004
-landcover_0050 <- data.frame(matrix(NA, nrow = length(minkbuffer_0050),
+landcover_00100 <- data.frame(matrix(NA, nrow = length(minkbuffer_00100),
                                     ncol = 26))
-head(landcover_0050)
-names(landcover_0050) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+head(landcover_00100)
+names(landcover_00100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21", "22", "23", "24", "25", "26")
+head(landcover_00100)
 
 # 2005 - 2012
-landcover_0750 <- data.frame(matrix(NA, nrow = length(minkbuffer_0750),
+landcover_07100 <- data.frame(matrix(NA, nrow = length(minkbuffer_07100),
                                     ncol = 24))
-names(landcover_0750) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_07100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21", "22", "23", "24")
 
 # 2013 - 2016
-landcover_1550 <- data.frame(matrix(NA, nrow = length(minkbuffer_1550),
+landcover_15100 <- data.frame(matrix(NA, nrow = length(minkbuffer_15100),
                                     ncol = 22))
-names(landcover_1550) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_15100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21", "22")
 
 # 2017
-landcover_1750 <- data.frame(matrix(NA, nrow = length(minkbuffer_1750),
+landcover_17100 <- data.frame(matrix(NA, nrow = length(minkbuffer_17100),
                                     ncol = 21))
-names(landcover_1750) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_17100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21")
 
 # 2018
-landcover_1850 <- data.frame(matrix(NA, nrow = length(minkbuffer_1850),
+landcover_18100 <- data.frame(matrix(NA, nrow = length(minkbuffer_18100),
                                     ncol = 21))
-names(landcover_1850) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_18100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21")
 
 # 2019
-landcover_1950 <- data.frame(matrix(NA, nrow = length(minkbuffer_1950),
+landcover_19100 <- data.frame(matrix(NA, nrow = length(minkbuffer_19100),
                                     ncol = 21))
-names(landcover_1950) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_19100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21")
 
 # 2020 - 2022
-landcover_2050 <- data.frame(matrix(NA, nrow = length(minkbuffer_2050),
+landcover_20100 <- data.frame(matrix(NA, nrow = length(minkbuffer_20100),
                                     ncol = 21))
-names(landcover_2050) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+names(landcover_20100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
                             "19", "20", "21")
 
 
-# Intersecting each buffer with the land cover
-
+# Intersecting each buffer with land cover
 # 2000 - 2004
 int.list00 <- list()
-for (i in 1:length(minkbuffer_0050)){
-  int.list00[[i]] <- raster::intersect(land_00, minkbuffer_0050[i,])
+for (i in 1:length(minkbuffer_00100)){
+  int.list00[[i]] <- raster::intersect(land_00, minkbuffer_00100[i,])
 }
 
 # 2005 - 2012
 int.list07 <- list()
-for (i in 1: length(minkbuffer_0750)){
-  int.list07[[i]] <- raster::intersect(land_07,  minkbuffer_0750[i,])
+for (i in 1: length(minkbuffer_07100)){
+  int.list07[[i]] <- raster::intersect(land_07,  minkbuffer_07100[i,])
 }
 
 # 2013 - 2016
 int.list15 <- list()
-for (i in 1:length(minkbuffer_1550)){
-  int.list15[[i]] <- raster::intersect(land_15, minkbuffer_1550[i,])
+for (i in 1:length(minkbuffer_15100)){
+  int.list15[[i]] <- raster::intersect(land_15, minkbuffer_15100[i,])
 }
 
 # 2017
 int.list17 <- list()
-for (i in 1:length(minkbuffer_1750)){
-  int.list17[[i]] <- raster::intersect(land_17, minkbuffer_1750[i,])
+for (i in 1:length(minkbuffer_17100)){
+  int.list17[[i]] <- raster::intersect(land_17, minkbuffer_17100[i,])
 }
 
 # 2018
 int.list18 <- list()
-for (i in 1:length(minkbuffer_1850)){
-  int.list18[[i]] <- raster::intersect(land_18, minkbuffer_1850[i,])
+for (i in 1:length(minkbuffer_18100)){
+  int.list18[[i]] <- raster::intersect(land_18, minkbuffer_18100[i,])
 }
 
 # 2019
 int.list19 <- list()
-for ( i in 1:length(minkbuffer_1950)){
-  int.list19[[i]] <- raster::intersect(land_19, minkbuffer_1950[i,])
+for ( i in 1:length(minkbuffer_19100)){
+  int.list19[[i]] <- raster::intersect(land_19, minkbuffer_19100[i,])
 }
 
 # 2020 - 2022
 int.list20 <- list()
-for (i in 1:length(minkbuffer_2050)){
-  int.list20[[i]] <- raster::intersect(land_20, minkbuffer_2050[i,])
+for (i in 1:length(minkbuffer_20100)){
+  int.list20[[i]] <- raster::intersect(land_20, minkbuffer_20100[i,])
 }
 
 
-# Counting pixel
-
+# Counting pixel for each land cover type at buffer
 # 2000 - 2004
-for (i in 1:length(minkbuffer_0050)){
-  for (j in 1:length(names(landcover_0050))) {
-    landcover_0050[i,j] <- table(values(int.list00[[i]]))[as.character(names(landcover_0050)[j])]
+for (i in 1:length(minkbuffer_00100)){
+  for (j in 1:length(names(landcover_00100))) {
+    landcover_00100[i,j] <- table(values(int.list00[[i]]))[as.character(names(landcover_00100)[j])]
   }}
-head(landcover_0050)
+head(landcover_00100)
 int.list00[[1]]
-land_00@data
+
 
 # 2005 - 2012
-for (i in 1:length(minkbuffer_0750)){
-  for ( j in 1:length(names(landcover_0750))) {
-    landcover_0750[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_0750)[j])]
+for (i in 1:length(minkbuffer_07100)){
+  for ( j in 1:length(names(landcover_07100))) {
+    landcover_07100[i,j] <- table(
+      values(int.list07[[i]]))[as.character(names(landcover_07100)[j])]
   }}
 
 # 2013 - 2016
-for (i in 1:length(minkbuffer_1550)){
-  for ( j in 1:length(names(landcover_1550))) {
-    landcover_1550[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_1550)[j])]
+for (i in 1:length(minkbuffer_15100)){
+  for ( j in 1:length(names(landcover_15100))) {
+    landcover_15100[i,j] <- table(
+      values(int.list15[[i]]))[as.character(names(landcover_15100)[j])]
   }}
 
 # 2017
-for (i in 1:length(minkbuffer_1750)){
-  for ( j in 1:length(names(landcover_1750))) {
-    landcover_1750[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_1750)[j])]
+for (i in 1:length(minkbuffer_17100)){
+  for ( j in 1:length(names(landcover_17100))) {
+    landcover_17100[i,j] <- table(
+      values(int.list17[[i]]))[as.character(names(landcover_17100)[j])]
   }}
 
 # 2018
-for (i in 1:length(minkbuffer_1850)){
-  for ( j in 1:length(names(landcover_1850))) {
-    landcover_1850[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_1850)[j])]
+for (i in 1:length(minkbuffer_18100)){
+   for ( j in 1:length(names(landcover_18100))) {
+    landcover_18100[i,j] <- table(
+      values(int.list18[[i]]))[as.character(names(landcover_18100)[j])]
   }}
 
 # 2019
-for (i in 1:length(minkbuffer_1950)){
-  for ( j in 1:length(names(landcover_1950))) {
-    landcover_1950[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_1950)[j])]
+for (i in 1:length(minkbuffer_19100)){
+  for ( j in 1:length(names(landcover_19100))) {
+    landcover_19100[i,j] <- table(
+      values(int.list19[[i]]))[as.character(names(landcover_19100)[j])]
   }}
 
 # 2017
-for (i in 1:length(minkbuffer_2050)){
-  for ( j in 1:length(names(landcover_2050))) {
-    landcover_2050[i,j] <- table(
-      values(int.list[[i]]))[as.character(names(landcover_2050)[j])]
+for (i in 1:length(minkbuffer_20100)){
+  for ( j in 1:length(names(landcover_20100))) {
+    landcover_20100[i,j] <- table(
+      values(int.list20[[i]]))[as.character(names(landcover_20100)[j])]
   }}
 
 
 # Changing categories name
-names(landcover_0050) <- c ("broadleaved_woodland",
+names(landcover_00100) <- c ("broadleaved_woodland",
                             "coniferous_woodland",
                             "boundaries_linearfeatures",
                             "arable_horticulture",
@@ -352,7 +348,7 @@ names(landcover_0050) <- c ("broadleaved_woodland",
                             "offshore_shelfrock",
                             "continential_shelfslope")
 
-names(landcover_0750) <- c ("unclassified",
+names(landcover_07100) <- c ("unclassified",
                             "broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
@@ -377,7 +373,8 @@ names(landcover_0750) <- c ("unclassified",
                             "urban",
                             "suburban")
 
-names(landcover_1550) <- c ("unclassified",
+
+names(landcover_15100) <- c ("unclassified",
                             "broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
@@ -400,7 +397,7 @@ names(landcover_1550) <- c ("unclassified",
                             "urban",
                             "suburban")
 
-names(landcover_1750) <- c ("broadleaved_woodland",
+names(landcover_17100) <- c ("broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -422,7 +419,7 @@ names(landcover_1750) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_1850) <- c ("broadleaved_woodland",
+names(landcover_18100) <- c ("broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -444,7 +441,7 @@ names(landcover_1850) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_1950) <- c ("broadleaved_woodland",
+names(landcover_19100) <- c ("broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -466,7 +463,7 @@ names(landcover_1950) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_2050) <- c ("broadleaved_woodland",
+names(landcover_20100) <- c ("broadleaved_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -490,211 +487,434 @@ names(landcover_2050) <- c ("broadleaved_woodland",
 
 
 # Replacing NAs with 0
-landcover_0050[is.na(landcover_0050)] <- 0
-head(landcover_0050)
-
-landcover_0750[is.na(landcover_0750)] <- 0
-landcover_1550[is.na(landcover_1550)] <- 0
-landcover_1750[is.na(landcover_1750)] <- 0
-landcover_1850[is.na(landcover_1850)] <- 0
-landcover_1950[is.na(landcover_1950)] <- 0
-landcover_2050[is.na(landcover_2050)] <- 0
-
-
-# Calculating proportion of each land cover type at buffer
-
-# 2000 - 2004
-landcover_0050$tot_pixel <- rowSums(landcover_0050)
-head(landcover_0050)
-tail(landcover_0050)
-summary(landcover_0050)
-names(landcover_0050)
-mink_00@data
-mink_00$broadleaved_woodland <- landcover_0050$broadleaved_woodland/landcover_0050$tot_pixel
-mink_00$coniferous_woodland <- landcover_0050$coniferous_woodland/landcover_0050$tot_pixel
-mink_00$boundaries_linearfeatures <- landcover_0050$boundaries_linearfeatures/landcover_0050$tot_pixel
-mink_00$arable_horticulture <- landcover_0050$arable_horticulture/landcover_0050$tot_pixel
-mink_00$improved_grassland <- landcover_0050$improved_grassland/landcover_0050$tot_pixel
-mink_00$neutral_grassland <- landcover_0050$neutral_grassland/landcover_0050$tot_pixel
-mink_00$calcareous_grassland <- landcover_0050$calcareous_grassland/landcover_0050$tot_pixel
-mink_00$acid_grassland <- landcover_0050$acid_grassland/landcover_0050$tot_pixel
-mink_00$bracken <- landcover_0050$bracken/landcover_0050$tot_pixel
-mink_00$dwarf_shrubheath <- landcover_0050$dwarf_shrubheath/landcover_0050$tot_pixel
-mink_00$fen_marsh_swamp <- landcover_0050$fen_marsh_swamp/landcover_0050$tot_pixel
-mink_00$bog <- landcover_0050$bog/landcover_0050$tot_pixel
-mink_00$standingwater_canals <- landcover_0050$standingwater_canals/landcover_0050$tot_pixel
-mink_00$rivers <- landcover_0050$rivers/landcover_0050$tot_pixel
-mink_00$montane_habitats <- landcover_0050$montane_habitats/landcover_0050$tot_pixel
-mink_00$inland_rock <- landcover_0050$inland_rock/landcover_0050$tot_pixel
-mink_00$builtup_areas <- landcover_0050$builtup_areas/landcover_0050$tot_pixel
-mink_00$supralittoral_rock <- landcover_0050$supralittoral_rock/landcover_0050$tot_pixel
-mink_00$supralittoral_sediment <- landcover_0050$supralittoral_sediment/landcover_0050$tot_pixel
-mink_00$littoral_rock <- landcover_0050$littoral_rock/landcover_0050$tot_pixel
-mink_00$littoral_sediment <- landcover_0050$littoral_sediment/landcover_0050$tot_pixel
-mink_00$inshore_sublittoralsediment <- landcover_0050$inshore_sublittoralsediment/landcover_0050$tot_pixel
-mink_00$inshore_sublittoralrock <- landcover_0050$inshore_sublittoralrock/landcover_0050$tot_pixel
-mink_00$offshore_shelfsediment <- landcover_0050$offshore_shelfsediment/landcover_0050$tot_pixel
-mink_00$offshore_shelfrock <- landcover_0050$offshore_shelfrock/landcover_0050$tot_pixel
-mink_00$continental_shelfslope <- landcover_0050$continental_shelfslope/landcover_0050$tot_pixel
-
-
-# 2005 - 2012
-landcover_0750$tot_pixel <- rowSums(landcover_0750)
-mink_07$unclassified <- landcover_0750$unclassified/landcover_0750$tot_pixel
-mink_07$broadleaved_woodland <- landcover_0750$broadleaved_woodland/landcover_0750$tot_pixel
-mink_07$coniferous_woodland <- landcover_0750$coniferous_woodland/landcover_0750$tot_pixel
-mink_07$arable_horticulture <- landcover_0750$arable_horticulture/landcover_0750$tot_pixel
-mink_07$improved_grassland <- landcover_0750$improved_grassland/landcover_0750$tot_pixel
-mink_07$rough_grassland <- landcover_0750$rough_grassland/landcover_0750$tot_pixel
-mink_07$neutral_grassland <- landcover_0750$neutral_grassland/landcover_0750$tot_pixel
-mink_07$calcareous_grassland <- landcover_0750$calcareous_grassland/landcover_0750$tot_pixel
-mink_07$acid_grassland <- landcover_0750$acid_grassland/landcover_0750$tot_pixel
-mink_07$fen_marsh_swamp <- landcover_0750$fen_marsh_swamp/landcover_0750$tot_pixel
-mink_07$heather <- landcover_0750$heather/landcover_0750$tot_pixel
-mink_07$heather_grassland <- landcover_0750$heather_grassland/landcover_0750$tot_pixel
-mink_07$bog <- landcover_0750$bog/landcover_0750$tot_pixel
-mink_07$montane_habitats <- landcover_0750$montane_habitats/landcover_0750$tot_pixel
-mink_07$inland_rock <- landcover_0750$inland_rock/landcover_0750$tot_pixel
-mink_07$saltwater <- landcover_0750$saltwater/landcover_0750$tot_pixel
-mink_07$freshwater <- landcover_0750$freshwater/landcover_0750$tot_pixel
-mink_07$supralittoral_rock <- landcover_0750$supralittoral_rock/landcover_0750$tot_pixel
-mink_07$supralittoral_sediment <- landcover_0750$supralittoral_sediment/landcover_0750$tot_pixel
-mink_07$littoral_rock <- landcover_0750$littoral_rock/landcover_0750$tot_pixel
-mink_07$littoral_sediment <- landcover_0750$littoral_sediment/landcover_0750$tot_pixel
-mink_07$saltmarsh <- landcover_0750$saltmarsh/landcover_0750$tot_pixel
-mink_07$urban <- landcover_0750$urban/landcover_0750$tot_pixel
-mink_07$suburban <- landcover_0750$suburban/landcover_0750$tot_pixel
-
-
-# 2003 - 2016
-landcover_1550$tot_pixel <- rowSums(landcover_1550)
-mink_15$unclassified <- landcover_1550$unclassified/landcover_1550$tot_pixel
-mink_15$broadleaved_woodland <- landcover_1550$broadleaved_woodland/landcover_1550$tot_pixel
-mink_15$coniferous_woodland <- landcover_1550$coniferous_woodland/landcover_1550$tot_pixel
-mink_15$arable_horticulture <- landcover_1550$arable_horticulture/landcover_1550$tot_pixel
-mink_15$improved_grassland <- landcover_1550$improved_grassland/landcover_1550$tot_pixel
-mink_15$neutral_grassland <- landcover_1550$neutral_grassland/landcover_1550$tot_pixel
-mink_15$calcareous_grassland <- landcover_1550$calcareous_grassland/landcover_1550$tot_pixel
-mink_15$acid_grassland <- landcover_1550$acid_grassland/landcover_1550$tot_pixel
-mink_15$fen_marsh_swamp <- landcover_1550$fen_marsh_swamp/landcover_1550$tot_pixel
-mink_15$heather <- landcover_1550$heather/landcover_1550$tot_pixel
-mink_15$heather_grassland <- landcover_1550$heather_grassland/landcover_1550$tot_pixel
-mink_15$bog <- landcover_1550$bog/landcover_1550$tot_pixel
-mink_15$inland_rock <- landcover_1550$inland_rock/landcover_1550$tot_pixel
-mink_15$saltwater <- landcover_1550$saltwater/landcover_1550$tot_pixel
-mink_15$freshwater <- landcover_1550$freshwater/landcover_1550$tot_pixel
-mink_15$supralittoral_rock <- landcover_1550$supralittoral_rock/landcover_1550$tot_pixel
-mink_15$supralittoral_sediment <- landcover_1550$supralittoral_sediment/landcover_1550$tot_pixel
-mink_15$littoral_rock <- landcover_1550$littoral_rock/landcover_1550$tot_pixel
-mink_15$littoral_sediment <- landcover_1550$littoral_sediment/landcover_1550$tot_pixel
-mink_15$saltmarsh <- landcover_1550$saltmarsh/landcover_1550$tot_pixel
-mink_15$urban <- landcover_1550$urban/landcover_1550$tot_pixel
-mink_15$suburban <- landcover_1550$suburban/landcover_1550$tot_pixel
-
-
-# 2017
-landcover_1750$tot_pixel <- rowSums(landcover_1750)
-mink_17$broadleaved_woodland <- landcover_1750$broadleaved_woodland/landcover_1750$tot_pixel
-mink_17$coniferous_woodland <- landcover_1750$coniferous_woodland/landcover_1750$tot_pixel
-mink_17$arable_horticulture <- landcover_1750$arable_horticulture/landcover_1750$tot_pixel
-mink_17$improved_grassland <- landcover_1750$improved_grassland/landcover_1750$tot_pixel
-mink_17$neutral_grassland <- landcover_1750$neutral_grassland/landcover_1750$tot_pixel
-mink_17$calcareous_grassland <- landcover_1750$calcareous_grassland/landcover_1750$tot_pixel
-mink_17$acid_grassland <- landcover_1750$acid_grassland/landcover_1750$tot_pixel
-mink_17$fen_marsh_swamp <- landcover_1750$fen_marsh_swamp/landcover_1750$tot_pixel
-mink_17$heather <- landcover_1750$heather/landcover_1750$tot_pixel
-mink_17$heather_grassland <- landcover_1750$heather_grassland/landcover_1750$tot_pixel
-mink_17$bog <- landcover_1750$bog/landcover_1750$tot_pixel
-mink_17$inland_rock <- landcover_1750$inland_rock/landcover_1750$tot_pixel
-mink_17$saltwater <- landcover_1750$saltwater/landcover_1750$tot_pixel
-mink_17$freshwater <- landcover_1750$freshwater/landcover_1750$tot_pixel
-mink_17$supralittoral_rock <- landcover_1750$supralittoral_rock/landcover_1750$tot_pixel
-mink_17$supralittoral_sediment <- landcover_1750$supralittoral_sediment/landcover_1750$tot_pixel
-mink_17$littoral_rock <- landcover_1750$littoral_rock/landcover_1750$tot_pixel
-mink_17$littoral_sediment <- landcover_1750$littoral_sediment/landcover_1750$tot_pixel
-mink_17$saltmarsh <- landcover_1750$saltmarsh/landcover_1750$tot_pixel
-mink_17$urban <- landcover_1750$urban/landcover_1750$tot_pixel
-mink_17$suburban <- landcover_1750$suburban/landcover_1750$tot_pixel
-
-
-# 2018
-landcover_1850$tot_pixel <- rowSums(landcover_1850)
-mink_18$broadleaved_woodland <- landcover_1850$broadleaved_woodland/landcover_1850$tot_pixel
-mink_18$coniferous_woodland <- landcover_1850$coniferous_woodland/landcover_1850$tot_pixel
-mink_18$arable_horticulture <- landcover_1850$arable_horticulture/landcover_1850$tot_pixel
-mink_18$improved_grassland <- landcover_1850$improved_grassland/landcover_1850$tot_pixel
-mink_18$neutral_grassland <- landcover_1850$neutral_grassland/landcover_1850$tot_pixel
-mink_18$calcareous_grassland <- landcover_1850$calcareous_grassland/landcover_1850$tot_pixel
-mink_18$acid_grassland <- landcover_1850$acid_grassland/landcover_1850$tot_pixel
-mink_18$fen_marsh_swamp <- landcover_1850$fen_marsh_swamp/landcover_1850$tot_pixel
-mink_18$heather <- landcover_1850$heather/landcover_1850$tot_pixel
-mink_18$heather_grassland <- landcover_1850$heather_grassland/landcover_1850$tot_pixel
-mink_18$bog <- landcover_1850$bog/landcover_1850$tot_pixel
-mink_18$inland_rock <- landcover_1850$inland_rock/landcover_1850$tot_pixel
-mink_18$saltwater <- landcover_1850$saltwater/landcover_1850$tot_pixel
-mink_18$freshwater <- landcover_1850$freshwater/landcover_1850$tot_pixel
-mink_18$supralittoral_rock <- landcover_1850$supralittoral_rock/landcover_1850$tot_pixel
-mink_18$supralittoral_sediment <- landcover_1850$supralittoral_sediment/landcover_1850$tot_pixel
-mink_18$littoral_rock <- landcover_1850$littoral_rock/landcover_1850$tot_pixel
-mink_18$littoral_sediment <- landcover_1850$littoral_sediment/landcover_1850$tot_pixel
-mink_18$saltmarsh <- landcover_1850$saltmarsh/landcover_1850$tot_pixel
-mink_18$urban <- landcover_1850$urban/landcover_1850$tot_pixel
-mink_18$suburban <- landcover_1850$suburban/landcover_1850$tot_pixel
-
-
-# 2019
-landcover_1950$tot_pixel <- rowSums(landcover_1950)
-mink_19$broadleaved_woodland <- landcover_1950$broadleaved_woodland/landcover_1950$tot_pixel
-mink_19$coniferous_woodland <- landcover_1950$coniferous_woodland/landcover_1950$tot_pixel
-mink_19$arable_horticulture <- landcover_1950$arable_horticulture/landcover_1950$tot_pixel
-mink_19$improved_grassland <- landcover_1950$improved_grassland/landcover_1950$tot_pixel
-mink_19$neutral_grassland <- landcover_1950$neutral_grassland/landcover_1950$tot_pixel
-mink_19$calcareous_grassland <- landcover_1950$calcareous_grassland/landcover_1950$tot_pixel
-mink_19$acid_grassland <- landcover_1950$acid_grassland/landcover_1950$tot_pixel
-mink_19$fen_marsh_swamp <- landcover_1950$fen_marsh_swamp/landcover_1950$tot_pixel
-mink_19$heather <- landcover_1950$heather/landcover_1950$tot_pixel
-mink_19$heather_grassland <- landcover_1950$heather_grassland/landcover_1950$tot_pixel
-mink_19$bog <- landcover_1950$bog/landcover_1950$tot_pixel
-mink_19$inland_rock <- landcover_1950$inland_rock/landcover_1950$tot_pixel
-mink_19$saltwater <- landcover_1950$saltwater/landcover_1950$tot_pixel
-mink_19$freshwater <- landcover_1950$freshwater/landcover_1950$tot_pixel
-mink_19$supralittoral_rock <- landcover_1950$supralittoral_rock/landcover_1950$tot_pixel
-mink_19$supralittoral_sediment <- landcover_1950$supralittoral_sediment/landcover_1950$tot_pixel
-mink_19$littoral_rock <- landcover_1950$littoral_rock/landcover_1950$tot_pixel
-mink_19$littoral_sediment <- landcover_1950$littoral_sediment/landcover_1950$tot_pixel
-mink_19$saltmarsh <- landcover_1950$saltmarsh/landcover_1950$tot_pixel
-mink_19$urban <- landcover_1950$urban/landcover_1950$tot_pixel
-mink_19$suburban <- landcover_1950$suburban/landcover_1950$tot_pixel
-
-
-# 2020 - 2022
-landcover_2050$tot_pixel <- rowSums(landcover_2050)
-mink_20$broadleaved_woodland <- landcover_2050$broadleaved_woodland/landcover_2050$tot_pixel
-mink_20$coniferous_woodland <- landcover_2050$coniferous_woodland/landcover_2050$tot_pixel
-mink_20$arable_horticulture <- landcover_2050$arable_horticulture/landcover_2050$tot_pixel
-mink_20$improved_grassland <- landcover_2050$improved_grassland/landcover_2050$tot_pixel
-mink_20$neutral_grassland <- landcover_2050$neutral_grassland/landcover_2050$tot_pixel
-mink_20$calcareous_grassland <- landcover_2050$calcareous_grassland/landcover_2050$tot_pixel
-mink_20$acid_grassland <- landcover_2050$acid_grassland/landcover_2050$tot_pixel
-mink_20$fen_marsh_swamp <- landcover_2050$fen_marsh_swamp/landcover_2050$tot_pixel
-mink_20$heather <- landcover_2050$heather/landcover_2050$tot_pixel
-mink_20$heather_grassland <- landcover_2050$heather_grassland/landcover_2050$tot_pixel
-mink_20$bog <- landcover_2050$bog/landcover_2050$tot_pixel
-mink_20$inland_rock <- landcover_2050$inland_rock/landcover_2050$tot_pixel
-mink_20$saltwater <- landcover_2050$saltwater/landcover_2050$tot_pixel
-mink_20$freshwater <- landcover_2050$freshwater/landcover_2050$tot_pixel
-mink_20$supralittoral_rock <- landcover_2050$supralittoral_rock/landcover_2050$tot_pixel
-mink_20$supralittoral_sediment <- landcover_2050$supralittoral_sediment/landcover_2050$tot_pixel
-mink_20$littoral_rock <- landcover_2050$littoral_rock/landcover_2050$tot_pixel
-mink_20$littoral_sediment <- landcover_2050$littoral_sediment/landcover_2050$tot_pixel
-mink_20$saltmarsh <- landcover_2050$saltmarsh/landcover_2050$tot_pixel
-mink_20$urban <- landcover_2050$urban/landcover_2050$tot_pixel
-mink_20$suburban <- landcover_2050$suburban/landcover_2050$tot_pixel
-
-
-mapview(mink_00) +
-  mapview(land_00)
+landcover_00100[is.na(landcover_00100)] <- 0
+head(landcover_00100)
+landcover_07100[is.na(landcover_07100)] <- 0
+landcover_15100[is.na(landcover_15100)] <- 0
+landcover_17100[is.na(landcover_17100)] <- 0
+landcover_18100[is.na(landcover_18100)] <- 0
+landcover_19100[is.na(landcover_19100)] <- 0
+landcover_20100[is.na(landcover_20100)] <- 0
 ```
+
+
+#### **Calculating proportion of each land cover type: 2000-2004**
+
+Now we need to calculate the proportion of each land cover type in all buffers.
+First, we start with the data from 2000 to 2004.
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_00100 <- landcover_00100[sapply(landcover_00100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_00100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_00100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_00100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_00100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_00100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_00100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+```
+
+Now we need to put our variables into the mink df. To do so we use a for loop to
+first take every variable from props and storing it in a df at the correct id
+location. 
+
+
+```{r}
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_00100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "00", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+#### **Calculating proportion of each land cover type: 2005-2012**
+
+Now we do the same for data from 2005 to 2012.
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_07100 <- landcover_07100[sapply(landcover_07100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_07100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_07100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_07100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_07100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_07100$id # new id column
+names(props$id) <- "id" # label
+head(props$id)
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+head(props)
+names(props)[2:ncol(props)] <- names(landcover_07100) # name for variables
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_07100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "07", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+
+#### **Calculating proportion of each land cover type: 2012-2016**
+
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_15100 <- landcover_15100[sapply(landcover_15100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_15100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_15100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_15100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_15100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_15100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_15100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_15100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "15", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+
+#### **Calculating proportion of each land cover type: 2017**
+
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_17100 <- landcover_17100[sapply(landcover_17100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_17100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_17100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_17100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_17100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_17100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_17100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_17100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "17", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+
+#### **Calculating proportion of each land cover type: 2018**
+
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_18100 <- landcover_18100[sapply(landcover_18100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_18100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_18100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_18100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_18100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_18100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_18100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_18100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "18", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+#### **Calculating proportion of each land cover type: 2019**
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_19100 <- landcover_19100[sapply(landcover_19100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_19100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_19100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_19100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_19100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_19100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_19100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_19100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "19", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
+
+#### **Calculating proportion of each land cover type: 2020-2022**
+
+```{r}
+# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
+landcover_20100 <- landcover_20100[sapply(landcover_20100,
+                                          function(x) any(x > 0))]
+
+# Creating empty df for for loop and storing proportions
+props <- data.frame()
+
+
+# Iterating through each row
+for(i in 1:nrow(landcover_20100)){
+  
+  # Iterating through each column
+  for(j in 1:ncol(landcover_20100)){
+    
+    # Calculating sum for each row 
+    row_sum <- sum(landcover_20100[i,])
+    
+    # Calculating proportion
+    props[i,j] <- landcover_20100[i,j]/row_sum
+  }}
+head(props)
+
+# Tidying up data
+props$id <- minkbuffer_20100$id # new id column
+names(props$id) <- "id" # label
+props <- props %>%
+  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
+names(props)[2:ncol(props)] <- names(landcover_20100) # labels
+head(props)
+props <- round(props, 3) # rounding up
+props[is.na(props)] <- NA # transforming NaNs in NAs
+props[props == 0.000] <- NA # transforming 0s in Nas
+head(props)
+
+# New data frame for next loop 
+df <- data.frame("id" = mink$id)
+
+# Iterating through each column
+for(j in 2:ncol(props)) {
+  
+  # Storing data at right id location in new df
+  df[,j] <- props[,j][match(df$id, props$id)]
+} 
+head(df)
+
+names(df)[2:ncol(df)] <- names(landcover_20100) # naming variables
+names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
+                               "20", sep = "_") # adding suffix so easier to recognise 
+head(df)
+mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+head(mink)
+```
+
 
 Now we can the environment space from objects we do not need anymore. 
 
@@ -714,8 +934,21 @@ rm(landcover_1750)
 rm(landcover_1850)
 rm(landcover_1950)
 rm(landcover_2050)
-rm(int.list)
+rm(int.list00)
+rm(int.list07)
+rm(int.list15)
+rm(int.list17)
+rm(int.list18)
+rm(int.list19)
+rm(int.list20)
+rm(props)
 gc()
+```
+
+Now, we calculate the distance from each land cover type 
+
+```{r}
+
 ```
 
 ------------------------------------------------------------------------
@@ -735,10 +968,331 @@ unique(water@data$layer)
 
 
 # distance calculation between points and nearest waterway
-dist.water <- gDistance(water, mink, byid = T)
-mink@data$dist.water <- apply(dist.water, MARGIN = 1, fun = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
-head(obs.points@data)
+dist_water <- gDistance(water, mink, byid = T)
+mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
+head(mink@data)
+```
+
+Now we create a buffer and calculate the distance of this from nearest waterway
+
+```{r}
+minkbuffer <- gBuffer(mink, width = 100, byid = T)
+
+# distance calculation between buffered points and nearest waterway
+buffdist_water <- gDistance(water, minkbuffer, byid = T)
+mink@data$buffdist_water <- apply(buffdist_water, MARGIN = 1, FUN = min) 
+head(mink@data)
+```
+
+Cleaning environment
+
+```{r}
+rm(dist_water)
+rm(buffdist_water)
+gc()
+```
+
+------------------------------------------------------------------------
+
+### **Layers: Roads**
+
+Now we will do the same with the road shapefile.
+
+```{r}
+roads <- readOGR("layers_27700/roads.shp",
+                 GDAL1_integer64_policy = T)
+mapview(roads)
+head(roads@data)
+unique(roads@data$fclass)
 
 
+# subsetting
+roads <- subset(roads, fclass == "residential" | fclass == "motorway"
+                | fclass == "secondary" | fclass == "path"
+                | fclass == "footway")
+unique(roads@data$fclass)
+
+
+# distance calculation between points and nearest road
+dist_roads <- gDistance(roads, mink, byid = T)
+mink@data$dist_roads <- apply(dist_roads, MARGIN = 1, FUN = min) 
+head(mink@data)
+
+# distance calculation between buffered points and nearest road
+buffdist_roads <- gDistance(roads, minkbuffer, byid = T)
+mink@data$buffdist_roads <- apply(buffdist_roads, MARGIN = 1, FUN = min) 
+head(mink@data)
+```
+
+Cleaning environment
+
+```{r}
+rm(dist_roads)
+rm(buffdist_roads)
+gc()
+```
+
+------------------------------------------------------------------------
+
+### **Layers: National parks/reservoirs**
+
+Let's first start by calculating distance of points from reserves
+```{r}
+# Importing reserves boundaries
+reserves <- readOGR("layers_27700/reserves.shp",
+                    GDAL1_integer64_policy = T)
+mapview(reserves)
+head(reserves@data)
+
+
+# distance calculation between points and nearest reserve
+dist_reserves <- gDistance(reserves, mink, byid = T)
+mink@data$dist_reserves <- apply(dist_reserves, MARGIN = 1, FUN = min) 
+head(mink@data)
+mink@data$dist_reserves <- round(mink@data$dist_reserves, 0)
+head(mink@data$dist_reserves)
+
+
+# distance calculation between buffered points and nearest reserve
+buffdist_reserves <- gDistance(reserves, minkbuffer, byid = T)
+mink@data$buffdist_reserves <- apply(buffdist_reserves, MARGIN = 1, FUN = min)
+head(mink@data)
+```
+
+
+Now, we do the same with national parks
+
+```{r}
+
+# Importing national parks
+nat_parks <- readOGR("layers_27700/national_parks.shp",
+                     GDAL1_integer64_policy = T)
+mapview(nat_parks)
+head(nat_parks@data)
+
+
+# distance calculation between points and nearest park
+dist_parks <- gDistance(nat_parks, mink, byid = T)
+mink@data$dist_parks <- apply(dist_parks, MARGIN = 1, FUN = min) 
+head(mink@data)
+mink@data$dist_parks <- round(mink@data$dist_parks, 0)
+head(mink@data$dist_parks)
+
+
+# distance calculation between buffered points and nearest national park
+buffdist_parks <- gDistance(parks, minkbuffer, byid = T)
+mink@data$buffdist_parks <- apply(buffdist_parks, MARGIN = 1, FUN = min)
+head(mink@data)
+```
+
+
+Now, we calculate distance from ramsars
+
+```{r}
+# Importing ramsars
+ramsars <- readOGR("layers_27700/ramsar.shp",
+                  GDAL1_integer64_policy = T)
+mapview(ramsars)
+head(ramsars@data)
+
+# distance calculation between points and nearest ramsar
+dist_ramsars <- gDistance(ramsars, mink, byid = T)
+mink@data$dist_ramsars <- apply(dist_ramsars, MARGIN = 1, FUN = min) 
+head(mink@data)
+mink@data$dist_ramsars <- round(mink@data$dist_ramsars, 0)
+head(mink@data$dist_ramsars)
+
+
+# distance calculation between buffered points and nearest reserve
+buffdist_ramsars <- gDistance(ramsars, minkbuffer, byid = T)
+mink@data$buffdist_ramsars <- apply(buffdist_ramsars, MARGIN = 1, FUN = min)
+head(mink@data)
+```
+
+
+Finally, we clean again the environment, from objects that we do not need anymore
+
+```{r}
+rm(dist_reserves)
+rm(dist_parks)
+rm(dist_ramsars)
+rm(buffdist_reserves)
+rm(buffdist_parks)
+rm(buffdist_ramsars)
+gc()
+```
+
+
+------------------------------------------------------------------------
+
+### **Layers: Rainfall**
+
+Now we calculate the rainfall levels at each observation point. We will need to
+repeat this for every year. However, we only have rainfall records up to 2020, 
+hence for the last two years we will use the rainfall occurred in 2020.
+
+```{r}
+# Importing rainfall
+rainf_00 <- raster("layers_27700/rainfall_2000.nc")
+rainf_01 <- raster("layers_27700/rainfall_2001.nc")
+rainf_02 <- raster("layers_27700/rainfall_2002.nc")
+rainf_03 <- raster("layers_27700/rainfall_2003.nc")
+rainf_04 <- raster("layers_27700/rainfall_2004.nc")
+rainf_05 <- raster("layers_27700/rainfall_2005.nc")
+rainf_06 <- raster("layers_27700/rainfall_2006.nc")
+rainf_07 <- raster("layers_27700/rainfall_2007.nc")
+rainf_08 <- raster("layers_27700/rainfall_2008.nc")
+rainf_09 <- raster("layers_27700/rainfall_2009.nc")
+rainf_10 <- raster("layers_27700/rainfall_2010.nc")
+rainf_11 <- raster("layers_27700/rainfall_2011.nc")
+rainf_12 <- raster("layers_27700/rainfall_2012.nc")
+rainf_13 <- raster("layers_27700/rainfall_2013.nc")
+rainf_14 <- raster("layers_27700/rainfall_2014.nc")
+rainf_15 <- raster("layers_27700/rainfall_2015.nc")
+rainf_16 <- raster("layers_27700/rainfall_2016.nc")
+rainf_17 <- raster("layers_27700/rainfall_2017.nc")
+rainf_18 <- raster("layers_27700/rainfall_2018.nc")
+rainf_19 <- raster("layers_27700/rainfall_2019.nc")
+rainf_20 <- raster("layers_27700/rainfall_2020.nc")
+
+
+# Extracting rainfall at buffered points and creating column in mink df
+mink@data$rainfall00 <- raster::extract(rainf_00, minkbuffer)
+mink@data$rainfall01 <- raster::extract(rainf_01, minkbuffer)
+mink@data$rainfall02 <- raster::extract(rainf_02, minkbuffer)
+mink@data$rainfall03 <- raster::extract(rainf_03, minkbuffer)
+mink@data$rainfall04 <- raster::extract(rainf_04, minkbuffer)
+mink@data$rainfall05 <- raster::extract(rainf_05, minkbuffer)
+mink@data$rainfall06 <- raster::extract(rainf_06, minkbuffer)
+mink@data$rainfall07 <- raster::extract(rainf_07, minkbuffer)
+mink@data$rainfall08 <- raster::extract(rainf_08, minkbuffer)
+mink@data$rainfall09 <- raster::extract(rainf_09, minkbuffer)
+mink@data$rainfall10 <- raster::extract(rainf_10, minkbuffer)
+mink@data$rainfall11 <- raster::extract(rainf_11, minkbuffer)
+mink@data$rainfall12 <- raster::extract(rainf_12, minkbuffer)
+mink@data$rainfall13 <- raster::extract(rainf_13, minkbuffer)
+mink@data$rainfall14 <- raster::extract(rainf_14, minkbuffer)
+mink@data$rainfall15 <- raster::extract(rainf_15, minkbuffer)
+mink@data$rainfall16 <- raster::extract(rainf_16, minkbuffer)
+mink@data$rainfall17 <- raster::extract(rainf_17, minkbuffer)
+mink@data$rainfall18 <- raster::extract(rainf_18, minkbuffer)
+mink@data$rainfall19 <- raster::extract(rainf_19, minkbuffer)
+mink@data$rainfall20 <- raster::extract(rainf_20, minkbuffer)
+```
+
+
+Cleaning environment
+
+
+```{r}
+rm(c(rainf_00, rainf_01, rainf_03, rainf_04, rainf_05, rainf_06, rainf_07, rainf_08,
+     rainf_09, rainf_10, rainf_11, rainf_12, rainf_13, rainf_14, rainf_15, rainf_16,
+     rainf_17, rainf_18, rainf_19, rainf_20))
+gc()
+```
+
+------------------------------------------------------------------------
+
+### **Layers: Temperature**
+
+Now we calculate the temperature levels at each observation point. We will need to
+repeat this for every year. However, we only have temperature records up to 2020, 
+hence for the last two years we will use the temperature recorded in 2020.
+
+```{r}
+# Importing temperature
+temp_00 <- raster("layers_27700/temp_2000.nc")
+temp_01 <- raster("layers_27700/temp_2001.nc")
+temp_02 <- raster("layers_27700/temp_2002.nc")
+temp_03 <- raster("layers_27700/temp_2003.nc")
+temp_04 <- raster("layers_27700/temp_2004.nc")
+temp_05 <- raster("layers_27700/temp_2005.nc")
+temp_06 <- raster("layers_27700/temp_2006.nc")
+temp_07 <- raster("layers_27700/temp_2007.nc")
+temp_08 <- raster("layers_27700/temp_2008.nc")
+temp_09 <- raster("layers_27700/temp_2009.nc")
+temp_10 <- raster("layers_27700/temp_2010.nc")
+temp_11 <- raster("layers_27700/temp_2011.nc")
+temp_12 <- raster("layers_27700/temp_2012.nc")
+temp_13 <- raster("layers_27700/temp_2013.nc")
+temp_14 <- raster("layers_27700/temp_2014.nc")
+temp_15 <- raster("layers_27700/temp_2015.nc")
+temp_16 <- raster("layers_27700/temp_2016.nc")
+temp_17 <- raster("layers_27700/temp_2017.nc")
+temp_18 <- raster("layers_27700/temp_2018.nc")
+temp_19 <- raster("layers_27700/temp_2019.nc")
+temp_20 <- raster("layers_27700/temp_2020.nc")
+
+
+# Extracting temp at buffered points and creating column in mink df
+mink@data$temp00 <- raster::extract(temp_00, minkbuffer)
+mink@data$temp01 <- raster::extract(temp_01, minkbuffer)
+mink@data$temp02 <- raster::extract(temp_02, minkbuffer)
+mink@data$temp03 <- raster::extract(temp_03, minkbuffer)
+mink@data$temp04 <- raster::extract(temp_04, minkbuffer)
+mink@data$temp05 <- raster::extract(temp_05, minkbuffer)
+mink@data$temp06 <- raster::extract(temp_06, minkbuffer)
+mink@data$temp07 <- raster::extract(temp_07, minkbuffer)
+mink@data$temp08 <- raster::extract(temp_08, minkbuffer)
+mink@data$temp09 <- raster::extract(temp_09, minkbuffer)
+mink@data$temp10 <- raster::extract(temp_10, minkbuffer)
+mink@data$temp11 <- raster::extract(temp_11, minkbuffer)
+mink@data$temp12 <- raster::extract(temp_12, minkbuffer)
+mink@data$temp13 <- raster::extract(temp_13, minkbuffer)
+mink@data$temp14 <- raster::extract(temp_14, minkbuffer)
+mink@data$temp15 <- raster::extract(temp_15, minkbuffer)
+mink@data$temp16 <- raster::extract(temp_16, minkbuffer)
+mink@data$temp17 <- raster::extract(temp_17, minkbuffer)
+mink@data$temp18 <- raster::extract(temp_18, minkbuffer)
+mink@data$temp19 <- raster::extract(temp_19, minkbuffer)
+mink@data$temp20 <- raster::extract(temp_20, minkbuffer)
+mink@data$temp21 <- raster::extract(temp_20, minkbuffer) #using the same as 2020
+mink@data$temp22 <- raster::extract(temp_20, minkbuffer) #using the same as 2020
+```
+
+Cleaning environment
+
+```{r}
+rm(c(temp_00, temp_01, temp_03, temp_04, temp_05, temp_06, temp_07, temp_08,
+     temp_09, temp_10, temp_11, temp_12, temp_13, temp_14, temp_15, temp_16,
+     temp_17, temp_18, temp_19, temp_20))
+gc()
+```
+
+------------------------------------------------------------------------
+
+### **Layers: Elevation, slope, aspect**
+
+
+```{r}
+# Importing elevation
+elev <- raster("layers_27700/dem_50m.tif")
+elev@ncols
+elev@nrows
+elev@extent
+mapview(elev)
+
+# Extracting elevation at buffered points
+mink@data$elevation <- raster::extract(elev, minkbuffer)
+```
+
+
+```{r}
+# Calculating slope 
+slope <- terrain(elev, opt = "slope",
+                 neighbors = 8, units = "degrees")
+mapview(slope)
+
+# Extracting slope at buffered points
+mink@data$slope <- raster::extract(slope, minkbuffer)
+
+
+# Calculating aspect
+aspect <- terrain(elev, opt = "aspect",
+                  neighbors = 8, units = "degrees")
+mapview(aspect)
+
+# Extracting aspect at buffered points
+mink@data$aspect <- raster::extract(aspect, minkbuffer)
 ```
 
