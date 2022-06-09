@@ -16,6 +16,9 @@ library(ncdf4)
 library(sf)
 library(rgeos)
 library(runjags)
+
+# working directory
+setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole")
 ```
 
 ------------------------------------------------------------------------
@@ -89,6 +92,7 @@ plot(boundary)
 
 # Creating random records in the boundary area
 mink_absence <- spsample(boundary, length(mink_sp), type = "random")
+mink_absence@proj4string
 mapview(mink_absence)
 length(mink_absence)
 
@@ -99,6 +103,7 @@ mink_absence <- SpatialPointsDataFrame(coords = mink_absence@coords,
                                        rep(0, length(mink_absence)),
                                        Year = mink_sp$Year),
                                        proj4string = mink_sp@proj4string)
+head(mink_absence@data)
 
 # Binding presence and absence sp objects
 mink <- rbind(mink_sp, mink_absence)
@@ -130,13 +135,13 @@ Let's first import the data
 
 ```{r}
 # Importing land cover
-land_00 <- raster("layers_27700/landcover_2000.tif")
-land_07 <- raster("layers_27700/landcover_2007.tif")
-land_15 <- raster("layers_27700/landcover_2015.tif")
-land_17 <- raster("layers_27700/landcover_2017.tif")
-land_18 <- raster("layers_27700/landcover_2018.tif") 
-land_19 <- raster("layers_27700/landcover_2019.tif")
-land_20 <- raster("layers_27700/landcover_2020.tif")
+land_00 <- raster("layers_27700/cover/landcover_2000.tif")
+land_07 <- raster("layers_27700/cover/landcover_2007.tif")
+land_15 <- raster("layers_27700/cover/landcover_2015.tif")
+land_17 <- raster("layers_27700/cover/landcover_2017.tif")
+land_18 <- raster("layers_27700/cover/landcover_2018.tif") 
+land_19 <- raster("layers_27700/cover/landcover_2019.tif")
+land_20 <- raster("layers_27700/cover/landcover_2020.tif")
 ```
 
 Now we will create buffers of 50 m to calculate the proportion of each land 
@@ -232,7 +237,7 @@ for (i in 1:length(minkbuffer_00100)){
 
 # 2005 - 2012
 int.list07 <- list()
-for (i in 1: length(minkbuffer_07100)){
+for (i in 1:length(minkbuffer_07100)){
   int.list07[[i]] <- raster::intersect(land_07,  minkbuffer_07100[i,])
 }
 
@@ -274,8 +279,6 @@ for (i in 1:length(minkbuffer_00100)){
     landcover_00100[i,j] <- table(values(int.list00[[i]]))[as.character(names(landcover_00100)[j])]
   }}
 head(landcover_00100)
-int.list00[[1]]
-
 
 # 2005 - 2012
 for (i in 1:length(minkbuffer_07100)){
@@ -312,7 +315,7 @@ for (i in 1:length(minkbuffer_19100)){
       values(int.list19[[i]]))[as.character(names(landcover_19100)[j])]
   }}
 
-# 2017
+# 2020
 for (i in 1:length(minkbuffer_20100)){
   for ( j in 1:length(names(landcover_20100))) {
     landcover_20100[i,j] <- table(
@@ -484,8 +487,62 @@ names(landcover_20100) <- c ("broadleaved_woodland",
                             "saltmarsh",
                             "urban",
                             "suburban")
+```
 
 
+#### **Calculating distance from land cover**
+ASK LUCA
+
+```{r}
+minkbuffer_100 <- list(minkbuffer_00100, minkbuffer_07100, minkbuffer_15100,
+                    minkbuffer_17100, minkbuffer_18100, minkbuffer_19100,
+                    minkbuffer_20100)
+cover_raster <- list(land_00, land_07, land_15, land_17,
+                     land_18, land_19, land_20)
+landcover <- list(landcover_00100, landcover_07100, landcover_15100,
+                  landcover_17100, landcover_18100, landcover_19100, landcover_20100)
+
+# Empty list to store data
+cover_matri <- list()
+dist_cover <- list()
+
+for(i in 1:length(landcover)){
+  # Creating raster with dimensions from land cover raster from each time period
+  cover_raster[[i]] <- raster(ncol = ncol(landcover[[i]]),
+                              nrow = nrow(landcover[[i]]),
+                              ext = extent(cover_raster[[i]]@extent@xmin,
+                              cover_raster[[i]]@extent@xmax,
+                              cover_raster[[i]]@extent@ymin,
+                              cover_raster[[i]]@extent@ymax),
+                              crs = cover_raster[[i]]@crs)
+  
+# Transforming land cover values from data frame into matrix 
+cover_matri[[i]] <- data.matrix(landcover[[i]])
+
+# Transferring matrix values into raster
+values(cover_raster[[i]]) <- cover_matri[[i]]
+
+# Calculating distances of each raster category from a different category (?)
+dist_cover[[i]] <- distance(cover_raster[[i]])
+}
+names(dist_cover) <- c("00", "07", "15", "17", "18", "19", "20")
+
+
+# Extracting distance of land cover type from buffered points
+# dist_cover[[i]] <- raster::extract(dist_cover[[i]], mink_buffer[[i]])
+
+mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
+head(mink@data)
+```
+
+
+
+#### **Calculating proportion of each land cover type**
+
+Now we need to calculate the proportion of each land cover type in all buffers.
+First, we start with the data from 2000 to 2004.
+
+```{r}
 # Replacing NAs with 0
 landcover_00100[is.na(landcover_00100)] <- 0
 head(landcover_00100)
@@ -495,548 +552,182 @@ landcover_17100[is.na(landcover_17100)] <- 0
 landcover_18100[is.na(landcover_18100)] <- 0
 landcover_19100[is.na(landcover_19100)] <- 0
 landcover_20100[is.na(landcover_20100)] <- 0
-```
 
 
-#### **Calculating proportion of each land cover type: 2000-2004**
+# Creating a list with all landcovers (I can probably remove this because I have it before when calculating the distance?)
+landcover <- list(landcover_00100, landcover_07100, landcover_15100,
+                  landcover_17100, landcover_18100, landcover_19100, landcover_20100)
 
-Now we need to calculate the proportion of each land cover type in all buffers.
-First, we start with the data from 2000 to 2004.
 
-```{r}
 # Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_00100 <- landcover_00100[sapply(landcover_00100,
-                                          function(x) any(x > 0))]
+for(i in 1:length(landcover)){
+landcover[[i]] <- landcover[[i]][sapply(landcover[[i]], function(x) any(x > 0))]
+}
+names(landcover) <- c("00", "07", "15", "17", "18", "19", "20")
+summary(landcover)
 
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
+
+# Calculating sum of all pixels for each id 
+row_sum <- lapply(landcover, rowSums)
+props <- list() # could probably change it back to "landcover"
 
 
-# Iterating through each row
-for(i in 1:nrow(landcover_00100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_00100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_00100[i,])
+# Calculating proportions
+  # Iterating through each element of the list
+  for(i in 1:length(landcover)){
     
     # Calculating proportion
-    props[i,j] <- landcover_00100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_00100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_00100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-```
-
-Now we need to put our variables into the mink df. To do so we use a for loop to
-first take every variable from props and storing it in a df at the correct id
-location. 
+    props[[i]] <- landcover[[i]]/row_sum[[i]]
+    props[[i]] <- round(props[[i]], 3) # rounding up
+  }
+summary(props)
 
 
-```{r}
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
+# Replacing NaNs with NAs
+props <- rapply(props, f = function(x) ifelse(is.nan(x), 0, x),
+                    how ="replace" ) 
+head(props[[1]])
 
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
 
-names(df)[2:ncol(df)] <- names(landcover_00100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "00", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
+# Creating data frame for each period 
+propcover_00 <- data.frame(props[[1]])
+head(propcover_00)
+propcover_07 <- data.frame(props[[2]])
+head(propcover_07)
+propcover_15 <- data.frame(props[[3]])
+propcover_17 <- data.frame(props[[4]])
+propcover_18 <- data.frame(props[[5]])
+propcover_19 <- data.frame(props[[6]])
+propcover_20 <- data.frame(props[[7]])
+
+
+# Taking id for each time period 
+id_00 <- minkbuffer_00100$id
+id_07 <- minkbuffer_07100$id
+id_15 <- minkbuffer_15100$id
+id_17 <- minkbuffer_17100$id
+id_18 <- minkbuffer_18100$id
+id_19 <- minkbuffer_19100$id
+id_20 <- minkbuffer_20100$id
+
+
+
+# Adding variables to mink df
+mink@data$unclassified <- 0
+mink@data$woodland <- 0
+mink@data$wetland <- 0
+mink@data$urban <- 0
+mink@data$freshwater <- 0
+mink@data$grassland <- 0
+mink@data$arable_horticulture <- 0
+mink@data$montane_habitats <- 0
+mink@data$inland_rock <- 0
+mink@data$heather <- 0
+mink@data$coastal_habitats <- 0
+mink@data$sea <- 0
+
+
+# 00
+mink@data$wetland[id_00] <- propcover_00[,1] # fen,marsh,swamp
+mink@data$coastal_habitats[id_00] <- propcover_00[,2]
+
+
+# 07
+names(propcover_07)
+mink@data$unclassified[id_07] <- propcover_07[,1]
+mink@data$woodland[id_07] <- rowSums(propcover_07[, c(2,3), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_07] <- propcover_07[,4]
+mink@data$grassland[id_07] <- rowSums(propcover_07[, c(5:9), drop = F]) # improved, rough, neutral, calcareous, acid (should I include heather grassland?)
+mink@data$wetland[id_07] <- rowSums(propcover_07[, c(10, 13), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
+mink@data$heather[id_07] <- rowSums(propcover_07[, c(11, 12), drop = F]) # heather and heather grassland
+mink@data$montane_habitats[id_07] <- propcover_07[,14]
+mink@data$inland_rock[id_07] <- propcover_07[,15]
+mink@data$sea[id_07] <- propcover_07[,16]
+mink@data$coastal_habitats [id_07] <- rowSums(propcover_07[, c(17:21), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_07] <- propcover_07[,22]
+
+
+# 15
+names(propcover_15)
+mink@data$unclassified[id_15] <- propcover_15[,1]
+mink@data$woodland[id_15] <- rowSums(propcover_15[, c(2,3), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_15] <- propcover_15[,4]
+mink@data$grassland[id_15] <- rowSums(propcover_15[, c(5:7), drop = F]) # improved, calcareous, acid (should I include heather grassland?)
+mink@data$wetland[id_15] <- rowSums(propcover_15[, c(8, 11), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
+mink@data$heather[id_15] <- rowSums(propcover_15[, c(9, 10), drop = F]) # heather and heather grassland
+mink@data$inland_rock[id_15] <- propcover_15[,12]
+mink@data$sea[id_15] <- propcover_15[,13]
+mink@data$freshwater[id_15] <- propcover_15[,14]
+mink@data$coastal_habitats [id_15] <- rowSums(propcover_15[, c(15:19), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_15] <- propcover_15[,20]
+
+
+
+# 17
+names(propcover_17)
+mink@data$woodland[id_17] <- rowSums(propcover_17[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_17] <- propcover_17[,3]
+mink@data$grassland[id_17] <- rowSums(propcover_17[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$heather[id_17] <- rowSums(propcover_17[, c(6, 7), drop = F]) # heather and heather grassland
+mink@data$wetland[id_17] <- rowSums(propcover_17[, c(8), drop = F]) # bog
+mink@data$inland_rock[id_17] <- propcover_17[,9]
+mink@data$sea[id_17] <- propcover_17[,10]
+mink@data$freshwater[id_17] <- propcover_17[,11]
+mink@data$coastal_habitats [id_17] <- rowSums(propcover_17[, c(12:16), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_17] <- rowSums(propcover_17[, c(17,18), drop = F]) # suburban, urban
+
+
+# 18
+names(propcover_18)
+mink@data$woodland[id_18] <- rowSums(propcover_18[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_18] <- propcover_18[,3]
+mink@data$grassland[id_18] <- rowSums(propcover_18[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$heather[id_18] <- rowSums(propcover_18[, c(6, 7), drop = F]) # heather and heather grassland
+mink@data$wetland[id_18] <- rowSums(propcover_18[, c(8), drop = F]) # bog
+mink@data$sea[id_18] <- propcover_18[,9]
+mink@data$freshwater[id_18] <- propcover_18[,10]
+mink@data$coastal_habitats [id_18] <- rowSums(propcover_18[, c(11:15), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_18] <- rowSums(propcover_18[, c(16,17), drop = F]) # suburban, urban
+
+
+# 19
+names(propcover_19)
+mink@data$woodland[id_19] <- rowSums(propcover_19[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_19] <- propcover_19[,3]
+mink@data$grassland[id_19] <- rowSums(propcover_19[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$heather[id_19] <- rowSums(propcover_19[, c(6, 7), drop = F]) # heather and heather grassland
+mink@data$wetland[id_19] <- rowSums(propcover_19[, c(8), drop = F]) # bog
+mink@data$inland_rock[id_19] <- propcover_19[,9]
+mink@data$sea[id_19] <- propcover_19[,10]
+mink@data$freshwater[id_19] <- propcover_19[,11]
+mink@data$coastal_habitats [id_19] <- rowSums(propcover_19[, c(12:16), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_19] <- rowSums(propcover_19[, c(17,18), drop = F]) # suburban, urban
+
+
+# 20
+names(propcover_20)
+mink@data$woodland[id_20] <- rowSums(propcover_20[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_20] <- propcover_20[,3]
+mink@data$grassland[id_20] <- rowSums(propcover_20[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$heather[id_20] <- rowSums(propcover_20[, c(6, 7), drop = F]) # heather and heather grassland
+mink@data$wetland[id_20] <- rowSums(propcover_20[, c(8), drop = F]) # bog
+mink@data$inland_rock[id_20] <- propcover_20[,9]
+mink@data$sea[id_20] <- propcover_20[,10]
+mink@data$freshwater[id_20] <- propcover_20[,11]
+mink@data$coastal_habitats [id_20] <- rowSums(propcover_20[, c(12:16), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_20] <- rowSums(propcover_20[, c(17,18), drop = F]) # suburban, urban
+
 head(mink)
 ```
 
-
-#### **Calculating proportion of each land cover type: 2005-2012**
-
-Now we do the same for data from 2005 to 2012.
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_07100 <- landcover_07100[sapply(landcover_07100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_07100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_07100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_07100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_07100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_07100$id # new id column
-names(props$id) <- "id" # label
-head(props$id)
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-head(props)
-names(props)[2:ncol(props)] <- names(landcover_07100) # name for variables
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_07100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "07", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-
-#### **Calculating proportion of each land cover type: 2012-2016**
-
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_15100 <- landcover_15100[sapply(landcover_15100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_15100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_15100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_15100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_15100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_15100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_15100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_15100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "15", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-
-#### **Calculating proportion of each land cover type: 2017**
-
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_17100 <- landcover_17100[sapply(landcover_17100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_17100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_17100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_17100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_17100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_17100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_17100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_17100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "17", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-
-#### **Calculating proportion of each land cover type: 2018**
-
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_18100 <- landcover_18100[sapply(landcover_18100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_18100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_18100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_18100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_18100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_18100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_18100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_18100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "18", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-#### **Calculating proportion of each land cover type: 2019**
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_19100 <- landcover_19100[sapply(landcover_19100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_19100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_19100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_19100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_19100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_19100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_19100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_19100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "19", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-#### **Calculating proportion of each land cover type: 2020-2022**
-
-```{r}
-# Keeping only variables with values >0 as these are the only one we need to calculate proportions for 
-landcover_20100 <- landcover_20100[sapply(landcover_20100,
-                                          function(x) any(x > 0))]
-
-# Creating empty df for for loop and storing proportions
-props <- data.frame()
-
-
-# Iterating through each row
-for(i in 1:nrow(landcover_20100)){
-  
-  # Iterating through each column
-  for(j in 1:ncol(landcover_20100)){
-    
-    # Calculating sum for each row 
-    row_sum <- sum(landcover_20100[i,])
-    
-    # Calculating proportion
-    props[i,j] <- landcover_20100[i,j]/row_sum
-  }}
-head(props)
-
-# Tidying up data
-props$id <- minkbuffer_20100$id # new id column
-names(props$id) <- "id" # label
-props <- props %>%
-  select(id, everything()) # moving id as 1st col in df (easier for next for loop)
-names(props)[2:ncol(props)] <- names(landcover_20100) # labels
-head(props)
-props <- round(props, 3) # rounding up
-props[is.na(props)] <- NA # transforming NaNs in NAs
-props[props == 0.000] <- NA # transforming 0s in Nas
-head(props)
-
-# New data frame for next loop 
-df <- data.frame("id" = mink$id)
-
-# Iterating through each column
-for(j in 2:ncol(props)) {
-  
-  # Storing data at right id location in new df
-  df[,j] <- props[,j][match(df$id, props$id)]
-} 
-head(df)
-
-names(df)[2:ncol(df)] <- names(landcover_20100) # naming variables
-names(df)[2:ncol(df)] <- paste(names(df)[2:ncol(df)],
-                               "20", sep = "_") # adding suffix so easier to recognise 
-head(df)
-mink@data <- cbind(mink@data, df[,2:ncol(df), drop = F]) # adding them to mink df
-head(mink)
-```
-
-
-Now we can the environment space from objects we do not need anymore. 
-
-```{r}
-# Cleaning space
-rm(minkbuffer_0050)
-rm(minkbuffer_0750)
-rm(minkbuffer_1550)
-rm(minkbuffer_1750)
-rm(minkbuffer_1850)
-rm(minkbuffer_1950)
-rm(minkbuffer_2050)
-rm(landcover_0050)
-rm(landcover_0750)
-rm(landcover_1550)
-rm(landcover_1750)
-rm(landcover_1850)
-rm(landcover_1950)
-rm(landcover_2050)
-rm(int.list00)
-rm(int.list07)
-rm(int.list15)
-rm(int.list17)
-rm(int.list18)
-rm(int.list19)
-rm(int.list20)
-rm(props)
-gc()
-```
-
-Now, we calculate the distance from each land cover type 
-
-```{r}
-
-```
 
 ------------------------------------------------------------------------
 
-### **Layers: Waterways**
-
-After importing the waterways shapefile, we will need to calculate the distance
-from each observation point to the nearest waterway.
-
-```{r}
-# Importing waterways
-water <- readOGR("layers_27700/waterways.shp",
-                 GDAL1_integer64_policy = T)
-mapview(water)
-head(water@data)
-unique(water@data$layer)
-
-
-# distance calculation between points and nearest waterway
-dist_water <- gDistance(water, mink, byid = T)
-mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
-head(mink@data)
-```
-
-Now we create a buffer and calculate the distance of this from nearest waterway
-
-```{r}
-minkbuffer <- gBuffer(mink, width = 100, byid = T)
-
-# distance calculation between buffered points and nearest waterway
-buffdist_water <- gDistance(water, minkbuffer, byid = T)
-mink@data$buffdist_water <- apply(buffdist_water, MARGIN = 1, FUN = min) 
-head(mink@data)
-```
-
-Cleaning environment
-
-```{r}
-rm(dist_water)
-rm(buffdist_water)
-gc()
-```
-
-------------------------------------------------------------------------
-
-### **Layers: Roads**
-
-Now we will do the same with the road shapefile.
-
-```{r}
-roads <- readOGR("layers_27700/roads.shp",
-                 GDAL1_integer64_policy = T)
-mapview(roads)
-head(roads@data)
-unique(roads@data$fclass)
-
-
-# subsetting
-roads <- subset(roads, fclass == "residential" | fclass == "motorway"
-                | fclass == "secondary" | fclass == "path"
-                | fclass == "footway")
-unique(roads@data$fclass)
-
-
-# distance calculation between points and nearest road
-dist_roads <- gDistance(roads, mink, byid = T)
-mink@data$dist_roads <- apply(dist_roads, MARGIN = 1, FUN = min) 
-head(mink@data)
-
-# distance calculation between buffered points and nearest road
-buffdist_roads <- gDistance(roads, minkbuffer, byid = T)
-mink@data$buffdist_roads <- apply(buffdist_roads, MARGIN = 1, FUN = min) 
-head(mink@data)
-```
-
-Cleaning environment
-
-```{r}
-rm(dist_roads)
-rm(buffdist_roads)
-gc()
-```
-
-------------------------------------------------------------------------
 
 ### **Layers: National parks/reservoirs**
 
 Let's first start by calculating distance of points from reserves
+
 ```{r}
 # Importing reserves boundaries
 reserves <- readOGR("layers_27700/reserves.shp",
@@ -1053,9 +744,14 @@ mink@data$dist_reserves <- round(mink@data$dist_reserves, 0)
 head(mink@data$dist_reserves)
 
 
+# Calculating buffer for all points 
+minkbuffer <- gBuffer(mink, width = 100, byid = T)
+
+
 # distance calculation between buffered points and nearest reserve
 buffdist_reserves <- gDistance(reserves, minkbuffer, byid = T)
 mink@data$buffdist_reserves <- apply(buffdist_reserves, MARGIN = 1, FUN = min)
+mink@data$buffdist_reserves <- round(mink@data$buffdist_reserves, 0)
 head(mink@data)
 ```
 
@@ -1063,7 +759,6 @@ head(mink@data)
 Now, we do the same with national parks
 
 ```{r}
-
 # Importing national parks
 nat_parks <- readOGR("layers_27700/national_parks.shp",
                      GDAL1_integer64_policy = T)
@@ -1080,8 +775,9 @@ head(mink@data$dist_parks)
 
 
 # distance calculation between buffered points and nearest national park
-buffdist_parks <- gDistance(parks, minkbuffer, byid = T)
+buffdist_parks <- gDistance(nat_parks, minkbuffer, byid = T)
 mink@data$buffdist_parks <- apply(buffdist_parks, MARGIN = 1, FUN = min)
+mink@data$buffdist_parks <- round(mink@data$buffdist_parks, 0)
 head(mink@data)
 ```
 
@@ -1092,7 +788,8 @@ Now, we calculate distance from ramsars
 # Importing ramsars
 ramsars <- readOGR("layers_27700/ramsar.shp",
                   GDAL1_integer64_policy = T)
-mapview(ramsars)
+mapview(ramsars) +
+  mapview(mink, zcol = "Occurrence")
 head(ramsars@data)
 
 # distance calculation between points and nearest ramsar
@@ -1106,6 +803,7 @@ head(mink@data$dist_ramsars)
 # distance calculation between buffered points and nearest reserve
 buffdist_ramsars <- gDistance(ramsars, minkbuffer, byid = T)
 mink@data$buffdist_ramsars <- apply(buffdist_ramsars, MARGIN = 1, FUN = min)
+mink@data$buffdist_ramsars <- round(mink@data$buffdist_ramsars, 0)
 head(mink@data)
 ```
 
@@ -1133,51 +831,43 @@ hence for the last two years we will use the rainfall occurred in 2020.
 
 ```{r}
 # Importing rainfall
-rainf_00 <- raster("layers_27700/rainfall_2000.nc")
-rainf_01 <- raster("layers_27700/rainfall_2001.nc")
-rainf_02 <- raster("layers_27700/rainfall_2002.nc")
-rainf_03 <- raster("layers_27700/rainfall_2003.nc")
-rainf_04 <- raster("layers_27700/rainfall_2004.nc")
-rainf_05 <- raster("layers_27700/rainfall_2005.nc")
-rainf_06 <- raster("layers_27700/rainfall_2006.nc")
-rainf_07 <- raster("layers_27700/rainfall_2007.nc")
-rainf_08 <- raster("layers_27700/rainfall_2008.nc")
-rainf_09 <- raster("layers_27700/rainfall_2009.nc")
-rainf_10 <- raster("layers_27700/rainfall_2010.nc")
-rainf_11 <- raster("layers_27700/rainfall_2011.nc")
-rainf_12 <- raster("layers_27700/rainfall_2012.nc")
-rainf_13 <- raster("layers_27700/rainfall_2013.nc")
-rainf_14 <- raster("layers_27700/rainfall_2014.nc")
-rainf_15 <- raster("layers_27700/rainfall_2015.nc")
-rainf_16 <- raster("layers_27700/rainfall_2016.nc")
-rainf_17 <- raster("layers_27700/rainfall_2017.nc")
-rainf_18 <- raster("layers_27700/rainfall_2018.nc")
-rainf_19 <- raster("layers_27700/rainfall_2019.nc")
-rainf_20 <- raster("layers_27700/rainfall_2020.nc")
+rainf_files <- list.files(path = "C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/rainfall",
+                          all.files = T, pattern = "nc$") 
+setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/rainfall") # need this line to run next one
+
+# Import raster
+rainfall <- lapply(rainf_files, raster) 
+
+# Subsetting observations per year
+mink_year<- split(mink, mink$Year)
+mink_year[["2020"]] <- c(mink_year[["2020"]]
+                         + mink_year[["2021"]]
+                         + mink_year[["2022"]]) # combining 2020-2021-2022 records
+mink_year["2020"] <- unlist(mink_year[["2020"]])
+mink_year[["2021"]] <- NULL
+mink_year[["2022"]] <- NULL
 
 
-# Extracting rainfall at buffered points and creating column in mink df
-mink@data$rainfall00 <- raster::extract(rainf_00, minkbuffer)
-mink@data$rainfall01 <- raster::extract(rainf_01, minkbuffer)
-mink@data$rainfall02 <- raster::extract(rainf_02, minkbuffer)
-mink@data$rainfall03 <- raster::extract(rainf_03, minkbuffer)
-mink@data$rainfall04 <- raster::extract(rainf_04, minkbuffer)
-mink@data$rainfall05 <- raster::extract(rainf_05, minkbuffer)
-mink@data$rainfall06 <- raster::extract(rainf_06, minkbuffer)
-mink@data$rainfall07 <- raster::extract(rainf_07, minkbuffer)
-mink@data$rainfall08 <- raster::extract(rainf_08, minkbuffer)
-mink@data$rainfall09 <- raster::extract(rainf_09, minkbuffer)
-mink@data$rainfall10 <- raster::extract(rainf_10, minkbuffer)
-mink@data$rainfall11 <- raster::extract(rainf_11, minkbuffer)
-mink@data$rainfall12 <- raster::extract(rainf_12, minkbuffer)
-mink@data$rainfall13 <- raster::extract(rainf_13, minkbuffer)
-mink@data$rainfall14 <- raster::extract(rainf_14, minkbuffer)
-mink@data$rainfall15 <- raster::extract(rainf_15, minkbuffer)
-mink@data$rainfall16 <- raster::extract(rainf_16, minkbuffer)
-mink@data$rainfall17 <- raster::extract(rainf_17, minkbuffer)
-mink@data$rainfall18 <- raster::extract(rainf_18, minkbuffer)
-mink@data$rainfall19 <- raster::extract(rainf_19, minkbuffer)
-mink@data$rainfall20 <- raster::extract(rainf_20, minkbuffer)
+# Extracting rainfall at observation point
+mink_rainf <- list() # empty list to store records
+
+for(i in 1:length(rainfall)){
+    mink_rainf[[i]] <- raster::extract(rainfall[[i]], mink_year[[i]])
+}
+str(mink_rainf)
+names(mink_rainf) <- seq(2000, 2020)
+
+
+# Transferring obs to mink df
+mink$rainfall <- NA # empty column to store rainf records
+
+for(i in 1:length(mink_year)){
+  id <- mink_year[[i]]["id"] # take id from each year
+  id <- unlist(id@data[[1]]) # unlist it to make it a vector
+
+mink$rainfall[id] <- mink_rainf[[i]] # put rainf records at id positions in mink df
+}
+head(mink$rainfall)
 ```
 
 
@@ -1185,9 +875,9 @@ Cleaning environment
 
 
 ```{r}
-rm(c(rainf_00, rainf_01, rainf_03, rainf_04, rainf_05, rainf_06, rainf_07, rainf_08,
-     rainf_09, rainf_10, rainf_11, rainf_12, rainf_13, rainf_14, rainf_15, rainf_16,
-     rainf_17, rainf_18, rainf_19, rainf_20))
+rm(rainf_files)
+rm(rainfall)
+rm(id)
 gc()
 ```
 
@@ -1201,61 +891,39 @@ hence for the last two years we will use the temperature recorded in 2020.
 
 ```{r}
 # Importing temperature
-temp_00 <- raster("layers_27700/temp_2000.nc")
-temp_01 <- raster("layers_27700/temp_2001.nc")
-temp_02 <- raster("layers_27700/temp_2002.nc")
-temp_03 <- raster("layers_27700/temp_2003.nc")
-temp_04 <- raster("layers_27700/temp_2004.nc")
-temp_05 <- raster("layers_27700/temp_2005.nc")
-temp_06 <- raster("layers_27700/temp_2006.nc")
-temp_07 <- raster("layers_27700/temp_2007.nc")
-temp_08 <- raster("layers_27700/temp_2008.nc")
-temp_09 <- raster("layers_27700/temp_2009.nc")
-temp_10 <- raster("layers_27700/temp_2010.nc")
-temp_11 <- raster("layers_27700/temp_2011.nc")
-temp_12 <- raster("layers_27700/temp_2012.nc")
-temp_13 <- raster("layers_27700/temp_2013.nc")
-temp_14 <- raster("layers_27700/temp_2014.nc")
-temp_15 <- raster("layers_27700/temp_2015.nc")
-temp_16 <- raster("layers_27700/temp_2016.nc")
-temp_17 <- raster("layers_27700/temp_2017.nc")
-temp_18 <- raster("layers_27700/temp_2018.nc")
-temp_19 <- raster("layers_27700/temp_2019.nc")
-temp_20 <- raster("layers_27700/temp_2020.nc")
+temp_files <- list.files(path = "C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/temperature",
+                          all.files = T, pattern = "nc$") 
+setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/temperature") # need this line to run next one
+temperature <- lapply(temp_files, raster) 
+
+# Extracting temperature at observation point
+mink_temp <- list() # empty list to store values
+
+for(i in 1:length(temperature)){
+    mink_temp[[i]] <- raster::extract(temperature[[i]], mink_year[[i]])
+}
+str(mink_temp)
+names(mink_temp) <- seq(2000, 2020)
 
 
-# Extracting temp at buffered points and creating column in mink df
-mink@data$temp00 <- raster::extract(temp_00, minkbuffer)
-mink@data$temp01 <- raster::extract(temp_01, minkbuffer)
-mink@data$temp02 <- raster::extract(temp_02, minkbuffer)
-mink@data$temp03 <- raster::extract(temp_03, minkbuffer)
-mink@data$temp04 <- raster::extract(temp_04, minkbuffer)
-mink@data$temp05 <- raster::extract(temp_05, minkbuffer)
-mink@data$temp06 <- raster::extract(temp_06, minkbuffer)
-mink@data$temp07 <- raster::extract(temp_07, minkbuffer)
-mink@data$temp08 <- raster::extract(temp_08, minkbuffer)
-mink@data$temp09 <- raster::extract(temp_09, minkbuffer)
-mink@data$temp10 <- raster::extract(temp_10, minkbuffer)
-mink@data$temp11 <- raster::extract(temp_11, minkbuffer)
-mink@data$temp12 <- raster::extract(temp_12, minkbuffer)
-mink@data$temp13 <- raster::extract(temp_13, minkbuffer)
-mink@data$temp14 <- raster::extract(temp_14, minkbuffer)
-mink@data$temp15 <- raster::extract(temp_15, minkbuffer)
-mink@data$temp16 <- raster::extract(temp_16, minkbuffer)
-mink@data$temp17 <- raster::extract(temp_17, minkbuffer)
-mink@data$temp18 <- raster::extract(temp_18, minkbuffer)
-mink@data$temp19 <- raster::extract(temp_19, minkbuffer)
-mink@data$temp20 <- raster::extract(temp_20, minkbuffer)
-mink@data$temp21 <- raster::extract(temp_20, minkbuffer) #using the same as 2020
-mink@data$temp22 <- raster::extract(temp_20, minkbuffer) #using the same as 2020
+# Transferring obs to mink df
+mink$temperature <- NA # empty column to store temp records
+
+for(i in 1:length(mink_year)){
+  id <- mink_year[[i]]["id"] # take id from each year
+  id <- unlist(id@data[[1]]) # unlist it to make it a vector
+
+mink$temperature[id] <- mink_temp[[i]] # put temp records at id positions in mink df
+}
+head(mink$temperature)
 ```
 
 Cleaning environment
 
 ```{r}
-rm(c(temp_00, temp_01, temp_03, temp_04, temp_05, temp_06, temp_07, temp_08,
-     temp_09, temp_10, temp_11, temp_12, temp_13, temp_14, temp_15, temp_16,
-     temp_17, temp_18, temp_19, temp_20))
+rm(temp_files)
+rm(temperature)
+rm(id)
 gc()
 ```
 
@@ -1266,16 +934,20 @@ gc()
 
 ```{r}
 # Importing elevation
-elev <- raster("layers_27700/dem_50m.tif")
+elev <- raster("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/dem_50m.tif")
 elev@ncols
 elev@nrows
 elev@extent
 mapview(elev)
 
 # Extracting elevation at buffered points
-mink@data$elevation <- raster::extract(elev, minkbuffer)
+elev_mink <- raster::extract(elev, mink)
+mink@data$elevation <- elev_mink
+head(mink$elevation)
 ```
 
+
+Now we calculate slope and aspect using the elevation raster
 
 ```{r}
 # Calculating slope 
@@ -1284,8 +956,9 @@ slope <- terrain(elev, opt = "slope",
 mapview(slope)
 
 # Extracting slope at buffered points
-mink@data$slope <- raster::extract(slope, minkbuffer)
-
+slope_mink <- raster::extract(slope, mink)
+mink@data$slope <- slope_mink
+head(mink$slope)
 
 # Calculating aspect
 aspect <- terrain(elev, opt = "aspect",
@@ -1293,6 +966,86 @@ aspect <- terrain(elev, opt = "aspect",
 mapview(aspect)
 
 # Extracting aspect at buffered points
-mink@data$aspect <- raster::extract(aspect, minkbuffer)
+aspect_mink <- raster::extract(aspect, mink)
+mink@data$aspect <- aspect_mink
+head(mink$aspect)
 ```
 
+------------------------------------------------------------------------
+
+### **Layers: Roads**
+
+Now we will do the same with the road shapefile.
+
+```{r}
+roads <- readOGR("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/roads.shp",
+                 GDAL1_integer64_policy = T)
+mapview(roads)
+head(roads@data)
+unique(roads@data$fclass)
+
+
+# Subsetting
+roads <- subset(roads, fclass == "residential" | fclass == "motorway"
+                | fclass == "secondary" | fclass == "path"
+                | fclass == "footway")
+unique(roads@data$fclass)
+
+
+# Distance calculation between points and nearest road
+dist_roads <- gDistance(roads, mink, byid = T)
+mink@data$dist_roads <- apply(dist_roads, MARGIN = 1, FUN = min) 
+head(mink@data)
+
+# Distance calculation between buffered points and nearest road
+buffdist_roads <- gDistance(roads, minkbuffer, byid = T)
+mink@data$buffdist_roads <- apply(buffdist_roads, MARGIN = 1, FUN = min) 
+head(mink@data)
+```
+
+
+Cleaning environment
+
+```{r}
+rm(dist_roads)
+rm(buffdist_roads)
+gc()
+```
+
+------------------------------------------------------------------------
+### **Layers: Waterways**
+
+After importing the waterways shapefile, we will need to calculate the distance
+from each observation point to the nearest waterway.
+
+```{r}
+# Importing waterways
+water <- readOGR("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/waterways.shp",
+                 GDAL1_integer64_policy = T)
+mapview(water)
+head(water@data)
+unique(water@data$layer)
+
+
+# distance calculation between points and nearest waterway
+dist_water <- gDistance(water, mink, byid = T)
+mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
+head(mink@data)
+```
+
+Now we create a buffer and calculate the distance of this from nearest waterway
+
+```{r}
+# distance calculation between buffered points and nearest waterway
+buffdist_water <- gDistance(water, minkbuffer, byid = T)
+mink@data$buffdist_water <- apply(buffdist_water, MARGIN = 1, FUN = min) 
+head(mink@data)
+```
+
+Cleaning environment
+
+```{r}
+rm(dist_water)
+rm(buffdist_water)
+gc()
+```
