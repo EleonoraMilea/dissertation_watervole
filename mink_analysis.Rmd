@@ -17,6 +17,7 @@ library(sf)
 library(rgeos)
 library(runjags)
 
+
 # working directory
 setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole")
 ```
@@ -74,9 +75,10 @@ length(mink_sp@data$Occurrence)
 
 
 # Plotting data
-mapview(mink_sp, axes = T,
+mapview(mink, axes = T,
         xlab = "Longitude",
-        ylab = "Latitude")
+        ylab = "Latitude",
+        zcol = "Occurrence")
 ```
 
 
@@ -152,7 +154,6 @@ intervals.
 
 ```{r}
 # Creating buffer for each time period
-# 2000 - 2004
 minkbuffer_00100 <- gBuffer(subset(mink, Year >= 2000 & Year <= 2004), width = 100, byid = T)
 head(minkbuffer_00100@data)
 
@@ -490,53 +491,6 @@ names(landcover_20100) <- c ("broadleaved_woodland",
 ```
 
 
-#### **Calculating distance from land cover**
-ASK LUCA
-
-```{r}
-minkbuffer_100 <- list(minkbuffer_00100, minkbuffer_07100, minkbuffer_15100,
-                    minkbuffer_17100, minkbuffer_18100, minkbuffer_19100,
-                    minkbuffer_20100)
-cover_raster <- list(land_00, land_07, land_15, land_17,
-                     land_18, land_19, land_20)
-landcover <- list(landcover_00100, landcover_07100, landcover_15100,
-                  landcover_17100, landcover_18100, landcover_19100, landcover_20100)
-
-# Empty list to store data
-cover_matri <- list()
-dist_cover <- list()
-
-for(i in 1:length(landcover)){
-  # Creating raster with dimensions from land cover raster from each time period
-  cover_raster[[i]] <- raster(ncol = ncol(landcover[[i]]),
-                              nrow = nrow(landcover[[i]]),
-                              ext = extent(cover_raster[[i]]@extent@xmin,
-                              cover_raster[[i]]@extent@xmax,
-                              cover_raster[[i]]@extent@ymin,
-                              cover_raster[[i]]@extent@ymax),
-                              crs = cover_raster[[i]]@crs)
-  
-# Transforming land cover values from data frame into matrix 
-cover_matri[[i]] <- data.matrix(landcover[[i]])
-
-# Transferring matrix values into raster
-values(cover_raster[[i]]) <- cover_matri[[i]]
-
-# Calculating distances of each raster category from a different category (?)
-dist_cover[[i]] <- distance(cover_raster[[i]])
-}
-names(dist_cover) <- c("00", "07", "15", "17", "18", "19", "20")
-
-
-# Extracting distance of land cover type from buffered points
-# dist_cover[[i]] <- raster::extract(dist_cover[[i]], mink_buffer[[i]])
-
-mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matrix and for each row take the minimum distance (2 would have been for each column)
-head(mink@data)
-```
-
-
-
 #### **Calculating proportion of each land cover type**
 
 Now we need to calculate the proportion of each land cover type in all buffers.
@@ -721,6 +675,72 @@ head(mink)
 ```
 
 
+Cleaning the environment
+
+```{r}
+rm(propcover_00)
+rm(propcover_07)
+rm(propcover_15)
+rm(propcover_17)
+rm(propcover_18)
+rm(propcover_19)
+rm(propcover_20)
+rm(props)
+rm(row_sum)
+gc()
+```
+
+#### **Calculating distance from land cover**
+
+```{r}
+conifer_r_00all <- readAll(land_00)
+
+# conifer_r_00 <- raster(ext = conifer_r_00@extent, ncols = 26, nrow = 180,
+#                        crs = conifer_r_00@crs,
+#                        vals = conifer_r_00@data@values,
+#                        resolution = 25.00001)
+conifer_r_00 <- raster(ncol = 26, ext = conifer_r_00all@extent,
+                       crs = conifer_r_00all@crs)
+conifer_r_00 <- raster(land_00)
+summary(values(conifer_r_00))
+names(conifer_r_00) <- c ("broadleaved_woodland",
+                            "coniferous_woodland",
+                            "boundaries_linearfeatures",
+                            "arable_horticulture",
+                            "improved_grassland",
+                            "neutral_grassland",
+                            "calcareous_grassland",
+                            "acid_grassland",
+                            "bracken",
+                            "dwarf_shrubheath",
+                            "fen_marsh_swamp",
+                            "bog",
+                            "standingwater_canals",
+                            "rivers",
+                            "montane_habitats",
+                            "inland_rock",
+                            "builtup_areas",
+                            "supralittoral_rock",
+                            "supralittoral_sediment",
+                            "littoral_rock",
+                            "littoral_sediment",
+                            "inshore_sublittoralsediment",
+                            "inshore_sublittoralrock",
+                            "offshore_shelfsediment",
+                            "offshore_shelfrock",
+                            "continential_shelfslope")
+values(conifer_r_00)[values(conifer_r_00)!= "2"] <- NA # 2 is the code of conifers
+values(conifer_r_00)[!is.na(values(conifer_r_00))] <- 0
+# plot(conifer_r_00)
+# plot(land_00)
+
+d_conifer_00 <- distance(conifer_r_00) # raster of distances between pixels that don't have conifers and conifers
+# plot(d.conifer)
+
+mink@data$d_conifer_00 <- raster::extract(d_conifer_00, mink)
+```
+
+
 ------------------------------------------------------------------------
 
 
@@ -742,17 +762,6 @@ mink@data$dist_reserves <- apply(dist_reserves, MARGIN = 1, FUN = min)
 head(mink@data)
 mink@data$dist_reserves <- round(mink@data$dist_reserves, 0)
 head(mink@data$dist_reserves)
-
-
-# Calculating buffer for all points 
-minkbuffer <- gBuffer(mink, width = 100, byid = T)
-
-
-# distance calculation between buffered points and nearest reserve
-buffdist_reserves <- gDistance(reserves, minkbuffer, byid = T)
-mink@data$buffdist_reserves <- apply(buffdist_reserves, MARGIN = 1, FUN = min)
-mink@data$buffdist_reserves <- round(mink@data$buffdist_reserves, 0)
-head(mink@data)
 ```
 
 
@@ -772,13 +781,6 @@ mink@data$dist_parks <- apply(dist_parks, MARGIN = 1, FUN = min)
 head(mink@data)
 mink@data$dist_parks <- round(mink@data$dist_parks, 0)
 head(mink@data$dist_parks)
-
-
-# distance calculation between buffered points and nearest national park
-buffdist_parks <- gDistance(nat_parks, minkbuffer, byid = T)
-mink@data$buffdist_parks <- apply(buffdist_parks, MARGIN = 1, FUN = min)
-mink@data$buffdist_parks <- round(mink@data$buffdist_parks, 0)
-head(mink@data)
 ```
 
 
@@ -798,25 +800,18 @@ mink@data$dist_ramsars <- apply(dist_ramsars, MARGIN = 1, FUN = min)
 head(mink@data)
 mink@data$dist_ramsars <- round(mink@data$dist_ramsars, 0)
 head(mink@data$dist_ramsars)
-
-
-# distance calculation between buffered points and nearest reserve
-buffdist_ramsars <- gDistance(ramsars, minkbuffer, byid = T)
-mink@data$buffdist_ramsars <- apply(buffdist_ramsars, MARGIN = 1, FUN = min)
-mink@data$buffdist_ramsars <- round(mink@data$buffdist_ramsars, 0)
-head(mink@data)
 ```
 
 
 Finally, we clean again the environment, from objects that we do not need anymore
 
 ```{r}
+rm(ramsars)
+rm(reserves)
+rm(nat_parks)
 rm(dist_reserves)
 rm(dist_parks)
 rm(dist_ramsars)
-rm(buffdist_reserves)
-rm(buffdist_parks)
-rm(buffdist_ramsars)
 gc()
 ```
 
@@ -839,20 +834,20 @@ setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertat
 rainfall <- lapply(rainf_files, raster) 
 
 # Subsetting observations per year
-mink_year<- split(mink, mink$Year)
-mink_year[["2020"]] <- c(mink_year[["2020"]]
-                         + mink_year[["2021"]]
-                         + mink_year[["2022"]]) # combining 2020-2021-2022 records
-mink_year["2020"] <- unlist(mink_year[["2020"]])
-mink_year[["2021"]] <- NULL
-mink_year[["2022"]] <- NULL
+mink_byyear<- split(mink, mink$Year)
+mink_byyear[["2020"]] <- c(mink_byyear[["2020"]]
+                         + mink_byyear[["2021"]]
+                         + mink_byyear[["2022"]]) # combining 2020-2021-2022 records
+mink_byyear["2020"] <- unlist(mink_byyear[["2020"]])
+mink_byyear[["2021"]] <- NULL
+mink_byyear[["2022"]] <- NULL
 
 
 # Extracting rainfall at observation point
 mink_rainf <- list() # empty list to store records
 
 for(i in 1:length(rainfall)){
-    mink_rainf[[i]] <- raster::extract(rainfall[[i]], mink_year[[i]])
+    mink_rainf[[i]] <- raster::extract(rainfall[[i]], mink_byyear[[i]])
 }
 str(mink_rainf)
 names(mink_rainf) <- seq(2000, 2020)
@@ -861,8 +856,8 @@ names(mink_rainf) <- seq(2000, 2020)
 # Transferring obs to mink df
 mink$rainfall <- NA # empty column to store rainf records
 
-for(i in 1:length(mink_year)){
-  id <- mink_year[[i]]["id"] # take id from each year
+for(i in 1:length(mink_byyear)){
+  id <- mink_byyear[[i]]["id"] # take id from each year
   id <- unlist(id@data[[1]]) # unlist it to make it a vector
 
 mink$rainfall[id] <- mink_rainf[[i]] # put rainf records at id positions in mink df
@@ -875,9 +870,9 @@ Cleaning environment
 
 
 ```{r}
+rm(mink_rainf)
 rm(rainf_files)
 rm(rainfall)
-rm(id)
 gc()
 ```
 
@@ -900,7 +895,7 @@ temperature <- lapply(temp_files, raster)
 mink_temp <- list() # empty list to store values
 
 for(i in 1:length(temperature)){
-    mink_temp[[i]] <- raster::extract(temperature[[i]], mink_year[[i]])
+    mink_temp[[i]] <- raster::extract(temperature[[i]], mink_byyear[[i]])
 }
 str(mink_temp)
 names(mink_temp) <- seq(2000, 2020)
@@ -909,8 +904,8 @@ names(mink_temp) <- seq(2000, 2020)
 # Transferring obs to mink df
 mink$temperature <- NA # empty column to store temp records
 
-for(i in 1:length(mink_year)){
-  id <- mink_year[[i]]["id"] # take id from each year
+for(i in 1:length(mink_byyear)){
+  id <- mink_byyear[[i]]["id"] # take id from each year
   id <- unlist(id@data[[1]]) # unlist it to make it a vector
 
 mink$temperature[id] <- mink_temp[[i]] # put temp records at id positions in mink df
@@ -923,7 +918,8 @@ Cleaning environment
 ```{r}
 rm(temp_files)
 rm(temperature)
-rm(id)
+rm(mink_temp)
+rm(mink_byyear)
 gc()
 ```
 
@@ -940,7 +936,7 @@ elev@nrows
 elev@extent
 mapview(elev)
 
-# Extracting elevation at buffered points
+# Extracting elevation at obs points
 elev_mink <- raster::extract(elev, mink)
 mink@data$elevation <- elev_mink
 head(mink$elevation)
@@ -955,7 +951,7 @@ slope <- terrain(elev, opt = "slope",
                  neighbors = 8, units = "degrees")
 mapview(slope)
 
-# Extracting slope at buffered points
+# Extracting slope at obs points
 slope_mink <- raster::extract(slope, mink)
 mink@data$slope <- slope_mink
 head(mink$slope)
@@ -965,10 +961,22 @@ aspect <- terrain(elev, opt = "aspect",
                   neighbors = 8, units = "degrees")
 mapview(aspect)
 
-# Extracting aspect at buffered points
+# Extracting aspect at obs points
 aspect_mink <- raster::extract(aspect, mink)
 mink@data$aspect <- aspect_mink
 head(mink$aspect)
+```
+
+Cleaning the environment
+
+```{r}
+rm(elev)
+rm(elev_mink)
+rm(aspect)
+rm(aspect_mink)
+rm(slope)
+rm(slope_mink)
+gc()
 ```
 
 ------------------------------------------------------------------------
@@ -996,19 +1004,14 @@ unique(roads@data$fclass)
 dist_roads <- gDistance(roads, mink, byid = T)
 mink@data$dist_roads <- apply(dist_roads, MARGIN = 1, FUN = min) 
 head(mink@data)
-
-# Distance calculation between buffered points and nearest road
-buffdist_roads <- gDistance(roads, minkbuffer, byid = T)
-mink@data$buffdist_roads <- apply(buffdist_roads, MARGIN = 1, FUN = min) 
-head(mink@data)
 ```
 
 
 Cleaning environment
 
 ```{r}
+rm(roads)
 rm(dist_roads)
-rm(buffdist_roads)
 gc()
 ```
 
@@ -1033,19 +1036,171 @@ mink@data$dist_water <- apply(dist_water, MARGIN = 1, FUN = min) # take the matr
 head(mink@data)
 ```
 
-Now we create a buffer and calculate the distance of this from nearest waterway
-
-```{r}
-# distance calculation between buffered points and nearest waterway
-buffdist_water <- gDistance(water, minkbuffer, byid = T)
-mink@data$buffdist_water <- apply(buffdist_water, MARGIN = 1, FUN = min) 
-head(mink@data)
-```
 
 Cleaning environment
 
 ```{r}
+rm(water)
 rm(dist_water)
-rm(buffdist_water)
 gc()
 ```
+
+
+
+
+------------------------------------------------------------------------
+
+### **JAGS models**
+
+```{r}
+# JAGS model0 - most complex model
+model0 <- 'model{
+
+# Main loop
+for(i in 1:length(mink$Occurrence)){
+minkoccurrence[i] ~ dbern(prob[i])
+logit(prob[i]) <- intercept +
+distancewater * dist_water[i] +
+distanceroads * dist_roads[i] +
+distancereserves * dist_reserves[i] +
+distanceramsars * dist_ramsars[i] +
+distanceparks * dist_parks[[i] +
+rainfeffect * rainfall[i] +
+rainfquadratic * rainfall[i]^2 +
+tempeffect * temperature[i] + 
+tempquadratic * temperature[i]^2 +
+eleveffect * elevation[i] +
+elevquadratic * elevation[i]^2 +
+elevtemp_interaction * temperature[i] * elevation[i] + 
+elevrainf_interaction * rainfall[i] * elevation[i] + 
+slopeeffect * slope[i] + 
+slopequadratic * slope[i]^2 +
+aspecteffect * aspect[i] + # quadratic effect?
+propbuff_unclass * unclassified[i] +
+propbuff_woodland * woodland[i] +
+propbuff_wetland * wetland[i] +
+propbuff_urban * urban[i] +
+propbuff_freshwater * freshwater[i] +
+propbuff_grassland * grassland[i] +
+propbuff_arable * arable_horticulture[i] +
+propbuff_montane * montane_habitats[i] +
+propbuff_inlandrock * inland_rock[i] +
+propbuff_heather * heather[i] +
+propbuff_coastal * coastal_habitats[i] +
+propbuff_sea * sea[i]
+dist_unclass * dist_unclassified[i] +
+dist_woodland * dist_woodland[i] +
+dist_wetland * dist_wetland[i] +
+dist_urban * dist_urban[i] +
+dist_freshwater * dist_freshwater[i] +
+dist_grassland * dist_grassland[i] +
+dist_arable * dist_arable_horticulture[i] +
+dist_montane * dist_montane_habitats[i] +
+dist_inlandrock * dist_inland_rock[i] +
+dist_heather * dist_heather[i] +
+dist_coastal * dist_coastal_habitats[i] +
+dist_sea * dist_sea[i]
+}
+
+
+# Priors 
+intercept ~ dnorm(0, 10^-6) # normal distribution?
+distancewater ~ dgamma(0.001, 0.001)
+distanceroads ~ dgamma(0.001, 0.001)
+distancereserves ~ dgamma(0.001, 0.001)
+distanceramsars ~ dgamma(0.001, 0.001)
+distanceparks ~ dgamma(0.001, 0.001)
+rainfeffect ~ dgamma(0.001, 0.001)
+temperature ~ dnorm(0, 10^-6)
+eleveffect ~ dgamma(0.001, 0.001) # ? can it be negative?
+slopeffect ~ dnorm(0, 10^-6) # ? dnorm ?
+aspecteffect ~ dgamma(0.001, 0.001) # ? can it be negative?
+propbuff_unclass ~ dbeta(1, 1)
+propbuff_woodland ~ dbeta(1, 1)
+propbuff_wetland ~ dbeta(1, 1) 
+propbuff_urban ~ dbeta(1, 1)
+propbuff_freshwater ~ dbeta(1, 1)
+propbuff_grassland ~ dbeta(1, 1)
+propbuff_arable ~ dbeta(1, 1)
+propbuff_montane ~ dbeta(1, 1)
+propbuff_inlandrock ~ dbeta(1, 1)
+propbuff_heather ~ dbeta(1, 1)
+propbuff_coastal ~ dbeta(1, 1)
+propbuff_sea ~ dbeta(1, 1)
+dist_unclass ~ dgamma(0.001, 0.001)
+dist_woodland ~ dgamma(0.001, 0.001)
+dist_wetland ~ dgamma(0.001, 0.001)
+dist_urban ~ dgamma(0.001, 0.001) 
+dist_freshwater ~ dgamma(0.001, 0.001)
+dist_grassland ~ dgamma(0.001, 0.001)
+dist_arable ~ dgamma(0.001, 0.001)
+dist_montane ~ dgamma(0.001, 0.001)
+dist_inlandrock ~ dgamma(0.001, 0.001)
+dist_heather ~ dgamma(0.001, 0.001)
+dist_coastal ~ dgamma(0.001, 0.001) 
+dist_sea ~ dgamma(0.001, 0.001)
+tau ~ dgamma(0.001, 0.001) # only one tau or a tau for each prior with normal distribution
+rainfquadratic ~ dnorm(0, 10^-6)
+tempquadratic ~ dnorm(0, 10^-6)
+elevquadratic ~ dnorm(0, 10^-6)
+elevtemp_interaction ~ dgamma(0.001, 0.001) # gamma or normal distribution?
+elevrainf_interaction ~ dgamma(0.001, 0.001) # gamma or normal distribution?
+
+
+#data# elevation, slope, aspect, temperature, rainfall, unclassified, woodland, wetland, heather, urban, freshwater, grassland, arable_horticulture, montane_habitats, inland_rock, coastal_habitats, sea, dist_reserves, dist_parks, dist_ramsars, dist_roads, dist_water, dist_unclassified, dist_woodland, dist_wetland, dist_heather, dist_urban, dist_freshwater, dist_grassland, dist_arable_horticulture, dist_montane_habitats, dist_inland_rock, dist_coastal_habitats, dist_sea
+
+#inits# intercept, distancewater, distanceroads, distanceparks, distancereserves, rainfeffect, tempeffect, eleveffect, slopeffect, aspecteffect, propbuff_unclass, propbuff_woodland, propbuff_wetland, propbuff_urban, propbuff_freshwater, propbuff_grassland, propbuff_arable, propbuff_montane, propbuff_inlandrock, propbuff_heather, propbuff_coastal, propbuff_sea, dist_unclass, dist_woodland, dist_wetland, dist_urban, dist_freshwater, dist_grassland, dist_arable, dist_montane, dist_inlandrock, dist_heather, dist_coastal, dist_sea, tau, rainfquadratic, tempquadratic, elevquadratic, elevtemp_interaction, elevrainf_interaction
+
+#monitor# intercept, DIC, distancewater, distanceroads, distanceparks, distancereserves, raineffect, tempeffect, eleveffect, slopeffect, aspecteffect, propbuff_unclass, propbuff_woodland, propbuff_wetland, propbuff_urban, propbuff_freshwater, propbuff_grassland, propbuff_arable, propbuff_montane, propbuff_inlandrock, propbuff_heather, propbuff_coastal, propbuff_sea, dist_unclass, dist_woodland, dist_wetland, dist_urban, dist_freshwater, dist_grassland, dist_arable, dist_montane, dist_inlandrock, dist_heather, dist_coastal, dist_sea, tau, rainfquadratic, tempquadratic, elevquadratic, elevtemp_interaction, elevrainf_interaction
+}'
+
+
+library(runjags)
+
+# Setting initial values
+intercept <- list(-1, 0.7) #?
+distancewater <- list(0.5, 1)
+distanceroads <- list(1, 1.5)
+distanceparks <- list(0.7, 1.2)
+distancereserves <- list(2.5, 0.7)
+rainfeffect <- list(0.3, 1)
+tempeffect <- list(-2, 2)
+eleveffect <- 
+slopeffect <- list(-1.5, 1.5)
+aspecteffect <- 
+propbuff_unclass <- list(0.1, 0.4)
+propbuff_woodland <- list(0.2, 0.6)
+propbuff_wetland <- list(0.3, 0.7)
+propbuff_urban <- list(0.4, 0.8)
+propbuff_freshwater <- list(0.5, 0.9)
+propbuff_grassland <- list(0.6, 1)
+propbuff_arable <- list(0.7, 0.1)
+propbuff_montane <- list(0.2, 0.8)
+propbuff_inlandrock <- list(0.7, 0.4)
+propbuff_heather <- list(0.6, 0.2)
+propbuff_coastal <- list(0.1, 0.5)
+propbuff_sea <- list(0, 1)
+dist_unclass <- list(0.4, 1)
+dist_woodland <- list(3, 5)
+dist_wetland <- list(4.2, 7)
+dist_urban <- list(2, 4.5)
+dist_freshwater <- list(1.5, 5)
+dist_grassland <- list(2.5, 1)
+dist_arable <- list(0.2, 2)
+dist_montane <- list(0.5, 3)
+dist_inlandrock <- list(1, 3.5)
+dist_heather <- list(0.3, 1)
+dist_coastal <- list(1, 2)
+dist_sea <- list(2, 4)
+tau <- list(0.01, 1)
+rainfquadratic <- list(-0.2, 1)
+tempquadratic <- list(-1, 0.2)
+elevquadratic <- list(-0.5, 1.2)
+elevtemp_interaction <- list(-2, 2) 
+elevrainf_interaction <- list()
+
+
+# Running the model
+results0 <- run.jags(model0, n.chains = 2, burnin = 5000, sample = 10000)
+plot(results0)
+results0
