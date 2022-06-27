@@ -5,9 +5,9 @@ date: '2022-06-02'
 output: html_document
 ---
 
-```{r warning=FALSE}
+
+```{r}
 # Loading libriaries
-library(tidyverse)
 library(sp)
 library(mapview)
 library(rgdal)
@@ -16,10 +16,6 @@ library(ncdf4)
 library(sf)
 library(rgeos)
 library(runjags)
-
-
-# working directory
-setwd("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole")
 ```
 
 ------------------------------------------------------------------------
@@ -188,17 +184,17 @@ head(landcover_00100)
 
 # 2005 - 2012
 landcover_07100 <- data.frame(matrix(NA, nrow = length(minkbuffer_07100),
-                                    ncol = 24))
+                                    ncol = 23))
 names(landcover_07100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
-                            "19", "20", "21", "22", "23", "24")
+                            "19", "20", "21", "22", "23")
 
 # 2013 - 2016
 landcover_15100 <- data.frame(matrix(NA, nrow = length(minkbuffer_15100),
-                                    ncol = 22))
+                                    ncol = 21))
 names(landcover_15100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
                             "11", "12", "13", "14", "15", "16", "17", "18",
-                            "19", "20", "21", "22")
+                            "19", "20", "21")
 
 # 2017
 landcover_17100 <- data.frame(matrix(NA, nrow = length(minkbuffer_17100),
@@ -325,7 +321,7 @@ for (i in 1:length(minkbuffer_20100)){
 
 
 # Changing categories name
-names(landcover_00100) <- c ("broadleaved_woodland",
+names(landcover_00100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "boundaries_linearfeatures",
                             "arable_horticulture",
@@ -352,8 +348,7 @@ names(landcover_00100) <- c ("broadleaved_woodland",
                             "offshore_shelfrock",
                             "continential_shelfslope")
 
-names(landcover_07100) <- c ("unclassified",
-                            "broadleaved_woodland",
+names(landcover_07100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -378,8 +373,7 @@ names(landcover_07100) <- c ("unclassified",
                             "suburban")
 
 
-names(landcover_15100) <- c ("unclassified",
-                            "broadleaved_woodland",
+names(landcover_15100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -401,7 +395,7 @@ names(landcover_15100) <- c ("unclassified",
                             "urban",
                             "suburban")
 
-names(landcover_17100) <- c ("broadleaved_woodland",
+names(landcover_17100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -423,7 +417,7 @@ names(landcover_17100) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_18100) <- c ("broadleaved_woodland",
+names(landcover_18100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -445,7 +439,7 @@ names(landcover_18100) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_19100) <- c ("broadleaved_woodland",
+names(landcover_19100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -467,7 +461,7 @@ names(landcover_19100) <- c ("broadleaved_woodland",
                             "urban",
                             "suburban")
 
-names(landcover_20100) <- c ("broadleaved_woodland",
+names(landcover_20100) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "arable_horticulture",
                             "improved_grassland",
@@ -534,12 +528,13 @@ props <- list() # could probably change it back to "landcover"
     props[[i]] <- landcover[[i]]/row_sum[[i]]
     props[[i]] <- round(props[[i]], 3) # rounding up
   }
-summary(props)
+head(props[[1]])
 
 
 # Replacing NaNs with NAs
 props <- rapply(props, f = function(x) ifelse(is.nan(x), 0, x),
                     how ="replace" ) 
+
 head(props[[1]])
 
 
@@ -565,9 +560,7 @@ id_19 <- minkbuffer_19100$id
 id_20 <- minkbuffer_20100$id
 
 
-
 # Adding variables to mink df
-mink@data$unclassified <- 0
 mink@data$woodland <- 0
 mink@data$wetland <- 0
 mink@data$urban <- 0
@@ -588,47 +581,44 @@ mink@data$coastal_habitats[id_00] <- propcover_00[,2]
 
 # 07
 names(propcover_07)
-mink@data$unclassified[id_07] <- propcover_07[,1]
-mink@data$woodland[id_07] <- rowSums(propcover_07[, c(2,3), drop = F]) # broadleaf,conifer
-mink@data$arable_horticulture[id_07] <- propcover_07[,4]
-mink@data$grassland[id_07] <- rowSums(propcover_07[, c(5:9), drop = F]) # improved, rough, neutral, calcareous, acid (should I include heather grassland?)
-mink@data$wetland[id_07] <- rowSums(propcover_07[, c(10, 13), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
-mink@data$heather[id_07] <- rowSums(propcover_07[, c(11, 12), drop = F]) # heather and heather grassland
-mink@data$montane_habitats[id_07] <- propcover_07[,14]
-mink@data$inland_rock[id_07] <- propcover_07[,15]
-mink@data$sea[id_07] <- propcover_07[,16]
-mink@data$coastal_habitats [id_07] <- rowSums(propcover_07[, c(17:21), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
-mink@data$urban[id_07] <- propcover_07[,22]
+mink@data$woodland[id_07] <- rowSums(propcover_07[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_07] <- propcover_07[,3]
+mink@data$grassland[id_07] <- rowSums(propcover_07[, c(4:8), drop = F]) # improved, rough, neutral, calcareous, acid (should I include heather grassland?)
+mink@data$wetland[id_07] <- rowSums(propcover_07[, c(9, 12), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
+mink@data$heather[id_07] <- rowSums(propcover_07[, c(10, 11), drop = F]) # heather and heather grassland
+mink@data$montane_habitats[id_07] <- propcover_07[,13]
+mink@data$inland_rock[id_07] <- propcover_07[,14]
+mink@data$sea[id_07] <- propcover_07[,15]
+mink@data$freshwater[id_07] <- propcover_07[,16]
+mink@data$coastal_habitats [id_07] <- rowSums(propcover_07[, c(17:20), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_07] <- rowSums(propcover_07[, c(21, 22), drop = F]) # urban suburban
 
 
 # 15
 names(propcover_15)
-mink@data$unclassified[id_15] <- propcover_15[,1]
-mink@data$woodland[id_15] <- rowSums(propcover_15[, c(2,3), drop = F]) # broadleaf,conifer
-mink@data$arable_horticulture[id_15] <- propcover_15[,4]
-mink@data$grassland[id_15] <- rowSums(propcover_15[, c(5:7), drop = F]) # improved, calcareous, acid (should I include heather grassland?)
-mink@data$wetland[id_15] <- rowSums(propcover_15[, c(8, 11), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
-mink@data$heather[id_15] <- rowSums(propcover_15[, c(9, 10), drop = F]) # heather and heather grassland
-mink@data$inland_rock[id_15] <- propcover_15[,12]
-mink@data$sea[id_15] <- propcover_15[,13]
-mink@data$freshwater[id_15] <- propcover_15[,14]
-mink@data$coastal_habitats [id_15] <- rowSums(propcover_15[, c(15:19), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
-mink@data$urban[id_15] <- propcover_15[,20]
-
+mink@data$woodland[id_15] <- rowSums(propcover_15[, c(1,2), drop = F]) # broadleaf,conifer
+mink@data$arable_horticulture[id_15] <- propcover_15[,3]
+mink@data$grassland[id_15] <- rowSums(propcover_15[, c(4:6), drop = F]) # improved, calcareous, acid (should I include heather grassland?)
+mink@data$wetland[id_15] <- rowSums(propcover_15[, c(7, 10), drop = F]) # fen,marsh,swamp,bog (should I also include saltmarsh?)
+mink@data$heather[id_15] <- rowSums(propcover_15[, c(8, 9), drop = F]) # heather and heather grassland
+mink@data$inland_rock[id_15] <- propcover_15[,11]
+mink@data$sea[id_15] <- propcover_15[,12]
+mink@data$freshwater[id_15] <- propcover_15[,13]
+mink@data$coastal_habitats [id_15] <- rowSums(propcover_15[, c(14:18), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_15] <- rowSums(propcover_15[, c(19,20), drop = F]) #urban suburban
 
 
 # 17
 names(propcover_17)
 mink@data$woodland[id_17] <- rowSums(propcover_17[, c(1,2), drop = F]) # broadleaf,conifer
 mink@data$arable_horticulture[id_17] <- propcover_17[,3]
-mink@data$grassland[id_17] <- rowSums(propcover_17[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$grassland[id_17] <- rowSums(propcover_17[, c(4,5), drop = F]) # improved, acid (should I include heather grassland?)
 mink@data$heather[id_17] <- rowSums(propcover_17[, c(6, 7), drop = F]) # heather and heather grassland
-mink@data$wetland[id_17] <- rowSums(propcover_17[, c(8), drop = F]) # bog
-mink@data$inland_rock[id_17] <- propcover_17[,9]
-mink@data$sea[id_17] <- propcover_17[,10]
-mink@data$freshwater[id_17] <- propcover_17[,11]
-mink@data$coastal_habitats [id_17] <- rowSums(propcover_17[, c(12:16), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
-mink@data$urban[id_17] <- rowSums(propcover_17[, c(17,18), drop = F]) # suburban, urban
+mink@data$wetland[id_17] <- propcover_17[,8] # bog
+mink@data$sea[id_17] <- propcover_17[,9]
+mink@data$freshwater[id_17] <- propcover_17[,10]
+mink@data$coastal_habitats [id_17] <- rowSums(propcover_17[, c(11:15), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
+mink@data$urban[id_17] <- rowSums(propcover_17[, c(16,17), drop = F]) # suburban, urban
 
 
 # 18
@@ -637,7 +627,7 @@ mink@data$woodland[id_18] <- rowSums(propcover_18[, c(1,2), drop = F]) # broadle
 mink@data$arable_horticulture[id_18] <- propcover_18[,3]
 mink@data$grassland[id_18] <- rowSums(propcover_18[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
 mink@data$heather[id_18] <- rowSums(propcover_18[, c(6, 7), drop = F]) # heather and heather grassland
-mink@data$wetland[id_18] <- rowSums(propcover_18[, c(8), drop = F]) # bog
+mink@data$wetland[id_18] <- propcover_18[,8] # bog
 mink@data$sea[id_18] <- propcover_18[,9]
 mink@data$freshwater[id_18] <- propcover_18[,10]
 mink@data$coastal_habitats [id_18] <- rowSums(propcover_18[, c(11:15), drop = F]) #supralittoral/littoral rock/sediment, saltmarsh
@@ -648,9 +638,9 @@ mink@data$urban[id_18] <- rowSums(propcover_18[, c(16,17), drop = F]) # suburban
 names(propcover_19)
 mink@data$woodland[id_19] <- rowSums(propcover_19[, c(1,2), drop = F]) # broadleaf,conifer
 mink@data$arable_horticulture[id_19] <- propcover_19[,3]
-mink@data$grassland[id_19] <- rowSums(propcover_19[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$grassland[id_19] <- rowSums(propcover_19[, c(4,5), drop = F]) # improved, acid (should I include heather grassland?)
 mink@data$heather[id_19] <- rowSums(propcover_19[, c(6, 7), drop = F]) # heather and heather grassland
-mink@data$wetland[id_19] <- rowSums(propcover_19[, c(8), drop = F]) # bog
+mink@data$wetland[id_19] <- propcover_19[,8] # bog
 mink@data$inland_rock[id_19] <- propcover_19[,9]
 mink@data$sea[id_19] <- propcover_19[,10]
 mink@data$freshwater[id_19] <- propcover_19[,11]
@@ -662,9 +652,9 @@ mink@data$urban[id_19] <- rowSums(propcover_19[, c(17,18), drop = F]) # suburban
 names(propcover_20)
 mink@data$woodland[id_20] <- rowSums(propcover_20[, c(1,2), drop = F]) # broadleaf,conifer
 mink@data$arable_horticulture[id_20] <- propcover_20[,3]
-mink@data$grassland[id_20] <- rowSums(propcover_20[, c(4:5), drop = F]) # improved, acid (should I include heather grassland?)
+mink@data$grassland[id_20] <- rowSums(propcover_20[, c(4,5), drop = F]) # improved, acid (should I include heather grassland?)
 mink@data$heather[id_20] <- rowSums(propcover_20[, c(6, 7), drop = F]) # heather and heather grassland
-mink@data$wetland[id_20] <- rowSums(propcover_20[, c(8), drop = F]) # bog
+mink@data$wetland[id_20] <- propcover_20[,8] # bog
 mink@data$inland_rock[id_20] <- propcover_20[,9]
 mink@data$sea[id_20] <- propcover_20[,10]
 mink@data$freshwater[id_20] <- propcover_20[,11]
@@ -703,7 +693,7 @@ conifer_r_00 <- raster(ncol = 26, ext = conifer_r_00all@extent,
                        crs = conifer_r_00all@crs)
 conifer_r_00 <- raster(land_00)
 summary(values(conifer_r_00))
-names(conifer_r_00) <- c ("broadleaved_woodland",
+names(conifer_r_00) <- c ("mixed_woodland",
                             "coniferous_woodland",
                             "boundaries_linearfeatures",
                             "arable_horticulture",
@@ -729,7 +719,7 @@ names(conifer_r_00) <- c ("broadleaved_woodland",
                             "offshore_shelfsediment",
                             "offshore_shelfrock",
                             "continential_shelfslope")
-values(conifer_r_00)[values(conifer_r_00)!= "2"] <- NA # 2 is the code of conifers
+values(conifer_r_00)[values(conifer_r_00)!= 2] <- NA # 2 is the code of conifers
 values(conifer_r_00)[!is.na(values(conifer_r_00))] <- 0
 # plot(conifer_r_00)
 # plot(land_00)
@@ -1046,13 +1036,174 @@ gc()
 ```
 
 
-
-
 ------------------------------------------------------------------------
 
+### **Layers: Soil**
+
+Top soil texture (2500 m). 
+Urban water voles may prefer porous soils to burrow (e.g. clay)
+
+```{r}
+soil_texture <- readOGR("C:/Users/elemi.LAPTOP-VIAG61N1/OneDrive - University of Glasgow/dissertation_watervole/layers_27700/soil_texture.shp",
+                 GDAL1_integer64_policy = T)
+mapview(soil_texture)
+
+minkbuffer_100 <- gBuffer(mink, width = 100, byid = T)
+
+soil_list <- list()
+for (i in 1:length(minkbuffer_100)){
+  soil_list[[i]] <- intersect(soil_texture, minkbuffer_100[i,])
+}
+
+
+soiltexture_100 <- data.frame(matrix(NA, nrow = length(minkbuffer_100),
+                                    ncol = 13))
+head(soiltexture_100)
+names(soiltexture_100) <- c( "1","2","3","4","5","6", "7", "8", "9", "10",
+                            "11", "12", "13")
+
+
+for (i in 1:length(minkbuffer_100)){
+  for ( j in 1:length(names(soiltexture_100))) {
+    soiltexture_100[i,j] <- table(
+      values(soil_list[[i]]))[as.character(names(soiltexture_100)[j])]
+  }}
+
+names(soiltexture_100) <- c("clay","clay_loam", "loamy_peat",
+                                         "loamy_sand", "peat", "peaty_loam",
+                                         "peaty_sand", "sand", "sandy_clay_loam",
+                                         "sandy_loam", "sandy_peat",
+                                         "sandy_silt_loam", "silty_clay_loam" )
+
+```
+
+------------------------------------------------------------------------
 ### **JAGS models**
 
 ```{r}
+mink2 <- as.data.frame(mink@data)
+
+mink2$Year <- NULL
+mink2$id <- NULL
+head(mink2)
+
+# JAGS model0 - most complex model
+model0 <- 'model{
+
+# Main loop
+for(i in 1:length(mink2$Occurrence)){
+minkoccurrence[i] ~ dbern(prob[i])
+logit(prob[i]) <- intercept +
+distancewater * dist_water[i] +
+distanceroads * dist_roads[i] +
+distancereserves * dist_reserves[i] +
+distanceramsars * dist_ramsars[i] +
+distanceparks * dist_parks[[i] +
+rainfeffect * rainfall[i] +
+rainfquadratic * rainfall[i]^2 +
+tempeffect * temperature[i] + 
+tempquadratic * temperature[i]^2 +
+eleveffect * elevation[i] +
+elevquadratic * elevation[i]^2 +
+elevtemp_interaction * temperature[i] * elevation[i] + 
+elevrainf_interaction * rainfall[i] * elevation[i] + 
+slopeeffect * slope[i] + 
+slopequadratic * slope[i]^2 +
+aspecteffect * aspect[i] +
+propbuff_woodland * woodland[i] +
+propbuff_wetland * wetland[i] +
+propbuff_urban * urban[i] +
+propbuff_freshwater * freshwater[i] +
+propbuff_grassland * grassland[i] +
+propbuff_arable * arable_horticulture[i] +
+propbuff_montane * montane_habitats[i] +
+propbuff_inlandrock * inland_rock[i] +
+propbuff_heather * heather[i] +
+propbuff_coastal * coastal_habitats[i] +
+propbuff_sea * sea[i]
+}
+
+
+# Priors 
+intercept ~ dnorm(0, 10^-6)
+distancewater ~ dnorm(0, 10^-6)
+distanceroads ~ dnorm(0, 10^-6)
+distancereserves ~ dnorm(0, 10^-6)
+distanceramsars ~ dnorm(0, 10^-6)
+distanceparks ~ dnorm(0, 10^-6)
+rainfeffect ~ dnorm(0, 10^-6)
+temperature ~ dnorm(0, 10^-6)
+eleveffect ~ dnorm(0, 10^-6)
+slopeffect ~ dnorm(0, 10^-6) 
+aspecteffect ~ dnorm(0, 10^-6) 
+propbuff_woodland ~ dnorm(0, 10^-6)
+propbuff_wetland ~ dnorm(0, 10^-6) 
+propbuff_urban ~ dnorm(0, 10^-6)
+propbuff_freshwater ~ dnorm(0, 10^-6)
+propbuff_grassland ~ dnorm(0, 10^-6)
+propbuff_arable ~ dnorm(0, 10^-6)
+propbuff_montane ~ dnorm(0, 10^-6)
+propbuff_inlandrock ~ dnorm(0, 10^-6)
+propbuff_heather ~ dnorm(0, 10^-6)
+propbuff_coastal ~ dnorm(0, 10^-6)
+propbuff_sea ~ dnorm(0, 10^-6)
+tau ~ dnorm(0, 10^-6) # only one tau or a tau for each prior with normal distribution
+rainfquadratic ~ dnorm(0, 10^-6)
+tempquadratic ~ dnorm(0, 10^-6)
+elevquadratic ~ dnorm(0, 10^-6)
+elevtemp_interaction ~ dnorm(0, 10^-6) 
+elevrainf_interaction ~ dnorm(0, 10^-6)
+
+
+#mink2# woodland, wetland, urban, freshwater, grassland, arable_horticulture, montane_habitats, heather, coastal_habitats, sea, dist_reserves, dist_parks, dist_ramsars, rainfall, temperature, dist_roads, elevation, aspect, slope, dist_water, inland_rock
+
+
+#inits# intercept, distancewater, distanceroads, distanceparks, distancereserves, rainfeffect, tempeffect, eleveffect, slopeffect, aspecteffect, propbuff_woodland, propbuff_wetland, propbuff_urban, propbuff_freshwater, propbuff_grassland, propbuff_arable, propbuff_montane, propbuff_inlandrock, propbuff_heather, propbuff_coastal, propbuff_sea,
+tau, rainfquadratic, tempquadratic, elevquadratic, elevtemp_interaction, elevrainf_interaction
+
+#monitor# intercept, DIC, distancewater, distanceroads, distanceparks, distancereserves, raineffect, tempeffect, eleveffect, slopeffect, aspecteffect, propbuff_woodland, propbuff_wetland, propbuff_urban, propbuff_freshwater, propbuff_grassland, propbuff_arable, propbuff_montane, propbuff_inlandrock, propbuff_heather, propbuff_coastal, propbuff_sea,tau,rainfquadratic, tempquadratic, elevquadratic, elevtemp_interaction, elevrainf_interaction
+}'
+
+
+# Setting initial values
+intercept <- list(-1, 0.7)
+distancewater <- list(0.5, 1)
+distanceroads <- list(1, 1.5)
+distanceparks <- list(0.7, 1.2)
+distancereserves <- list(2.5, 0.7)
+rainfeffect <- list(0.3, 1)
+tempeffect <- list(-2, 2)
+eleveffect <- list(-1, 1)
+slopeffect <- list(-1.5, 1.5)
+aspecteffect <- list(-3, 3)
+propbuff_unclass <- list(0.1, 0.4)
+propbuff_woodland <- list(0.2, 0.6)
+propbuff_wetland <- list(0.3, 0.7)
+propbuff_urban <- list(0.4, 0.8)
+propbuff_freshwater <- list(0.5, 0.9)
+propbuff_grassland <- list(0.6, 1)
+propbuff_arable <- list(0.7, 0.1)
+propbuff_montane <- list(0.2, 0.8)
+propbuff_inlandrock <- list(0.7, 0.4)
+propbuff_heather <- list(0.6, 0.2)
+propbuff_coastal <- list(0.1, 0.5)
+propbuff_sea <- list(0, 1)
+tau <- list(0.01, 1)
+rainfquadratic <- list(-0.2, 1)
+tempquadratic <- list(-1, 0.2)
+elevquadratic <- list(-0.5, 1.2)
+elevtemp_interaction <- list(-2, 2) 
+elevrainf_interaction <- list(-0.5, 1)
+
+# Set working directory otherwise code below won't work
+setwd("C:/Program Files/x64/bin//")
+
+# Running the model
+results0 <- run.jags(model0, n.chains = 2, burnin = 5000, sample = 10000)
+plot(results0)
+results0
+
+
 # JAGS model0 - most complex model
 model0 <- 'model{
 
@@ -1105,46 +1256,46 @@ dist_sea * dist_sea[i]
 
 # Priors 
 intercept ~ dnorm(0, 10^-6) # normal distribution?
-distancewater ~ dgamma(0.001, 0.001)
-distanceroads ~ dgamma(0.001, 0.001)
-distancereserves ~ dgamma(0.001, 0.001)
-distanceramsars ~ dgamma(0.001, 0.001)
-distanceparks ~ dgamma(0.001, 0.001)
-rainfeffect ~ dgamma(0.001, 0.001)
+distancewater ~ dnorm(0, 10^-6)
+distanceroads ~ dnorm(0, 10^-6)
+distancereserves ~ dnorm(0, 10^-6)
+distanceramsars ~ dnorm(0, 10^-6)
+distanceparks ~ dnorm(0, 10^-6)
+rainfeffect ~ dnorm(0, 10^-6)
 temperature ~ dnorm(0, 10^-6)
-eleveffect ~ dgamma(0.001, 0.001) # ? can it be negative?
+eleveffect ~ dnorm(0, 10^-6) # ? can it be negative?
 slopeffect ~ dnorm(0, 10^-6) # ? dnorm ?
-aspecteffect ~ dgamma(0.001, 0.001) # ? can it be negative?
-propbuff_unclass ~ dbeta(1, 1)
-propbuff_woodland ~ dbeta(1, 1)
-propbuff_wetland ~ dbeta(1, 1) 
-propbuff_urban ~ dbeta(1, 1)
-propbuff_freshwater ~ dbeta(1, 1)
-propbuff_grassland ~ dbeta(1, 1)
-propbuff_arable ~ dbeta(1, 1)
-propbuff_montane ~ dbeta(1, 1)
-propbuff_inlandrock ~ dbeta(1, 1)
-propbuff_heather ~ dbeta(1, 1)
-propbuff_coastal ~ dbeta(1, 1)
-propbuff_sea ~ dbeta(1, 1)
-dist_unclass ~ dgamma(0.001, 0.001)
-dist_woodland ~ dgamma(0.001, 0.001)
-dist_wetland ~ dgamma(0.001, 0.001)
-dist_urban ~ dgamma(0.001, 0.001) 
-dist_freshwater ~ dgamma(0.001, 0.001)
-dist_grassland ~ dgamma(0.001, 0.001)
-dist_arable ~ dgamma(0.001, 0.001)
-dist_montane ~ dgamma(0.001, 0.001)
-dist_inlandrock ~ dgamma(0.001, 0.001)
-dist_heather ~ dgamma(0.001, 0.001)
-dist_coastal ~ dgamma(0.001, 0.001) 
-dist_sea ~ dgamma(0.001, 0.001)
-tau ~ dgamma(0.001, 0.001) # only one tau or a tau for each prior with normal distribution
+aspecteffect ~ dnorm(0, 10^-6) # ? can it be negative?
+propbuff_unclass ~ dnorm(0, 10^-6)
+propbuff_woodland ~ dnorm(0, 10^-6)
+propbuff_wetland ~ dnorm(0, 10^-6) 
+propbuff_urban ~ dnorm(0, 10^-6)
+propbuff_freshwater ~ dnorm(0, 10^-6)
+propbuff_grassland ~ dnorm(0, 10^-6)
+propbuff_arable ~ dnorm(0, 10^-6)
+propbuff_montane ~ dnorm(0, 10^-6)
+propbuff_inlandrock ~ dnorm(0, 10^-6)
+propbuff_heather ~ dnorm(0, 10^-6)
+propbuff_coastal ~ dnorm(0, 10^-6)
+propbuff_sea ~ dnorm(0, 10^-6)
+dist_unclass ~ dnorm(0, 10^-6)
+dist_woodland ~ dnorm(0, 10^-6)
+dist_wetland ~ dnorm(0, 10^-6)
+dist_urban ~ dnorm(0, 10^-6) 
+dist_freshwater ~ dnorm(0, 10^-6)
+dist_grassland ~ dnorm(0, 10^-6)
+dist_arable ~ dnorm(0, 10^-6)
+dist_montane ~ dnorm(0, 10^-6)
+dist_inlandrock ~ dnorm(0, 10^-6)
+dist_heather ~ dnorm(0, 10^-6)
+dist_coastal ~ dnorm(0, 10^-6) 
+dist_sea ~ dnorm(0, 10^-6)
+tau ~ dnorm(0, 10^-6) # only one tau or a tau for each prior with normal distribution
 rainfquadratic ~ dnorm(0, 10^-6)
 tempquadratic ~ dnorm(0, 10^-6)
 elevquadratic ~ dnorm(0, 10^-6)
-elevtemp_interaction ~ dgamma(0.001, 0.001) # gamma or normal distribution?
-elevrainf_interaction ~ dgamma(0.001, 0.001) # gamma or normal distribution?
+elevtemp_interaction ~ dnorm(0, 10^-6) # gamma or normal distribution?
+elevrainf_interaction ~ dnorm(0, 10^-6) # gamma or normal distribution?
 
 
 #data# elevation, slope, aspect, temperature, rainfall, unclassified, woodland, wetland, heather, urban, freshwater, grassland, arable_horticulture, montane_habitats, inland_rock, coastal_habitats, sea, dist_reserves, dist_parks, dist_ramsars, dist_roads, dist_water, dist_unclassified, dist_woodland, dist_wetland, dist_heather, dist_urban, dist_freshwater, dist_grassland, dist_arable_horticulture, dist_montane_habitats, dist_inland_rock, dist_coastal_habitats, dist_sea
@@ -1154,7 +1305,7 @@ elevrainf_interaction ~ dgamma(0.001, 0.001) # gamma or normal distribution?
 #monitor# intercept, DIC, distancewater, distanceroads, distanceparks, distancereserves, raineffect, tempeffect, eleveffect, slopeffect, aspecteffect, propbuff_unclass, propbuff_woodland, propbuff_wetland, propbuff_urban, propbuff_freshwater, propbuff_grassland, propbuff_arable, propbuff_montane, propbuff_inlandrock, propbuff_heather, propbuff_coastal, propbuff_sea, dist_unclass, dist_woodland, dist_wetland, dist_urban, dist_freshwater, dist_grassland, dist_arable, dist_montane, dist_inlandrock, dist_heather, dist_coastal, dist_sea, tau, rainfquadratic, tempquadratic, elevquadratic, elevtemp_interaction, elevrainf_interaction
 }'
 
-
+names(mink2$elevation) <- "elev"
 library(runjags)
 
 # Setting initial values
@@ -1204,3 +1355,5 @@ elevrainf_interaction <- list()
 results0 <- run.jags(model0, n.chains = 2, burnin = 5000, sample = 10000)
 plot(results0)
 results0
+```
+
